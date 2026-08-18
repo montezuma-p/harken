@@ -1,0 +1,10 @@
+{
+  "name": "hark",
+  "description": "Local audio transcription skill for Claude Code — batch and WhatsApp chat-export transcription via the hark CLI, fully offline, no API key. Installs the skill only; the hark CLI must be installed separately (see README).",
+  "version": "0.1.0",
+  "author": {
+    "name": "Pedro Montezuma",
+    "url": "https://github.com/montezuma-p"
+  },
+  "skills": ["./.claude/skills"]
+}
