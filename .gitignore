@@ -1,11 +1,10 @@
-.venv/
-__pycache__/
-*.egg-info/
-dist/
-.pytest_cache/
+# Rust
+target/
 
 # Transcription outputs embed full transcript text — never commit them
 transcripts/
 *-transcripts/
 
+# Local tooling noise
+.playwright-mcp/
 .claude/settings.local.json
