@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from hark.core import TranscriptionResult
+from harken.core import TranscriptionResult
 
 
 def write_txt(result: TranscriptionResult, dest: Path) -> None:

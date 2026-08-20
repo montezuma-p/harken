@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
-from hark.batch import AUDIO_EXTENSIONS, run_batch
-from hark.core import Transcriber
+from harken.batch import AUDIO_EXTENSIONS, run_batch
+from harken.core import Transcriber
 
 _MESSAGE_RE = re.compile(
     r"^‎?\[(\d{2}/\d{2}/\d{4}), (\d{2}:\d{2}:\d{2})\] ([^:]+): (.*)$"
@@ -58,7 +58,7 @@ def _infer_day_first(date_strs: list[str]) -> bool:
     """Decide the date order of an Android chat from its whole corpus of
     header dates: any first component > 12 proves day-first, any second
     component > 12 proves month-first. Fully ambiguous chats default to
-    day-first (hark is pt-centric)."""
+    day-first (harken is pt-centric)."""
     components = [tuple(int(p) for p in ds.split("/")[:2]) for ds in date_strs]
     if any(a > 12 for a, _ in components):
         return True
@@ -220,7 +220,7 @@ def _load_manifest_texts(manifest: Path) -> dict[str, str]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="hark whatsapp",
+        prog="harken whatsapp",
         description="Transcribe audio attachments from a WhatsApp chat export",
     )
     parser.add_argument("export_zip", help="Path to the WhatsApp chat export .zip")

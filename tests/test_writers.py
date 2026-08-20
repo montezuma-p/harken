@@ -1,4 +1,4 @@
-"""Tests for hark.writers output formats."""
+"""Tests for harken.writers output formats."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from hark.core import Segment, TranscriptionResult
-from hark.writers import append_manifest, write_json, write_srt, write_txt
+from harken.core import Segment, TranscriptionResult
+from harken.writers import append_manifest, write_json, write_srt, write_txt
 
 
 @pytest.fixture

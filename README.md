@@ -1,13 +1,15 @@
-# hark
+# harken
 
 **Local audio transcription for Claude Code and any agent — batch, fully offline, no API key.**
+
+[![PyPI](https://img.shields.io/pypi/v/harken)](https://pypi.org/project/harken/)
 
 Powered by [faster-whisper](https://github.com/SYSTRAN/faster-whisper).
 
 ## Why
 
 Voice notes, meeting recordings, and WhatsApp PTT audio often contain
-sensitive content. `hark` transcribes everything on your own machine:
+sensitive content. `harken` transcribes everything on your own machine:
 no audio, and no transcript, ever leaves the device. There is no API key,
 no upload step, no cloud dependency.
 
@@ -19,38 +21,39 @@ no upload step, no cloud dependency.
 
 ## Quickstart
 
-Requires Python >= 3.11, managed with [uv](https://docs.astral.sh/uv/).
+Requires Python >= 3.11. With [uv](https://docs.astral.sh/uv/), no install
+step at all:
 
 ```bash
-git clone https://github.com/montezuma-p/hark && cd hark
-uv sync
-uv run hark voice-note.opus
+uvx harken voice-note.opus
 ```
 
-Or install it as a standalone tool: `uv tool install .` then `hark --help`.
+To keep the command on PATH: `uv tool install harken` (or
+`pip install harken`), then `harken --help`.
+
+For development, clone and run from source:
+
+```bash
+git clone https://github.com/montezuma-p/harken && cd harken
+uv sync
+uv run harken voice-note.opus
+```
 
 ## Use with Claude Code
 
-`hark` ships an [Agent Skill](.claude/skills/transcribe-audio/SKILL.md) that
+`harken` ships an [Agent Skill](.claude/skills/transcribe-audio/SKILL.md) that
 teaches Claude Code when and how to transcribe audio locally instead of
-reaching for a cloud API. Three ways to get it:
+reaching for a cloud API. Install it as a plugin:
 
-1. **Clone the repo** — the skill is project-scoped in `.claude/skills/`,
-   so any Claude Code session started inside the repo picks it up
-   automatically.
-2. **Install as a plugin**:
+```
+/plugin marketplace add montezuma-p/harken
+/plugin install harken@harken
+```
 
-   ```
-   /plugin marketplace add montezuma-p/hark
-   /plugin install hark@hark
-   ```
-
-3. **Copy or symlink** `.claude/skills/transcribe-audio/` into
-   `~/.claude/skills/` to make it available in every project.
-
-> **Note:** the plugin installs the *skill*, not the CLI. You still need
-> the `hark` command available — either `uv tool install .` from a clone,
-> or run it with `uv run hark ...` from the repo root.
+That's all — the skill runs the CLI with `uvx harken`, so the plugin works
+on its own with no separate install. (Alternatively: clone the repo and the
+project-scoped skill in `.claude/skills/` is picked up automatically, or
+copy/symlink `.claude/skills/transcribe-audio/` into `~/.claude/skills/`.)
 
 ## Usage
 
@@ -58,16 +61,16 @@ reaching for a cloud API. Three ways to get it:
 
 ```bash
 # One file
-hark voice-note.opus
+harken voice-note.opus
 
 # A whole folder, recursively, written to ./transcripts by default
-hark ~/Downloads/meeting-recordings/
+harken ~/Downloads/meeting-recordings/
 
 # Glob, custom output dir, JSON output, force re-transcription
-hark "recordings/*.m4a" --out ./out --format json --force
+harken "recordings/*.m4a" --out ./out --format json --force
 
 # Larger model, auto-detect language instead of the pt default
-hark recording.wav --model medium --lang auto
+harken recording.wav --model medium --lang auto
 ```
 
 Flags: `--out DIR` (default `./transcripts`), `--model` (default `small`),
@@ -88,25 +91,25 @@ failures).
 ### WhatsApp export mode — transcribe voice notes straight from a chat export
 
 Export a chat from WhatsApp ("Export chat" → without media, or with media
-— either works, `hark` only needs the audio attachments) and point
-`hark` at the resulting `.zip`:
+— either works, `harken` only needs the audio attachments) and point
+`harken` at the resulting `.zip`:
 
 ```bash
 # All voice notes in the export
-hark whatsapp "WhatsApp Chat with Maria.zip"
+harken whatsapp "WhatsApp Chat with Maria.zip"
 
 # Only a date range, with the model biased to Portuguese
-hark whatsapp export.zip --from 2026-07-01 --to 2026-07-15 --lang pt
+harken whatsapp export.zip --from 2026-07-01 --to 2026-07-15 --lang pt
 
 # Also write a merged chat transcript with each transcript inlined
-hark whatsapp export.zip --from 2026-07-01 --to 2026-07-15 --merge --out ./maria-july
+harken whatsapp export.zip --from 2026-07-01 --to 2026-07-15 --merge --out ./maria-july
 ```
 
 Flags: `--out DIR` (default `./<zip-stem>-transcripts`), `--from` / `--to`
 (`YYYY-MM-DD`, inclusive on both ends), `--merge`, plus `--model`, `--lang`,
 `--device`, `--force` as in batch mode.
 
-`hark whatsapp` locates the chat log inside the zip, selects only the
+`harken whatsapp` locates the chat log inside the zip, selects only the
 messages carrying an audio attachment within the date range, extracts
 those files to `<out>/audio/`, and transcribes them (same skip/force,
 manifest, and progress behavior as batch mode — it reuses the same batch

@@ -1,4 +1,4 @@
-"""Tests for hark.batch: file collection and batch transcription."""
+"""Tests for harken.batch: file collection and batch transcription."""
 
 from __future__ import annotations
 
@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from hark.batch import BatchStats, collect_audio_files, run_batch
-from hark.core import Segment, TranscriptionResult
+from harken.batch import BatchStats, collect_audio_files, run_batch
+from harken.core import Segment, TranscriptionResult
 
 
 class FakeTranscriber:
-    """Stand-in for hark.core.Transcriber. No faster_whisper involved."""
+    """Stand-in for harken.core.Transcriber. No faster_whisper involved."""
 
     def __init__(self, fail_on: set[str] | None = None):
         self.fail_on = fail_on or set()

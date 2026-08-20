@@ -1,15 +1,15 @@
 {
-  "name": "hark",
-  "description": "Marketplace for the hark plugin — local, offline audio transcription for Claude Code.",
+  "name": "harken",
+  "description": "Marketplace for the harken plugin — local, offline audio transcription for Claude Code.",
   "owner": {
     "name": "montezuma-p",
     "url": "https://github.com/montezuma-p"
   },
   "plugins": [
     {
-      "name": "hark",
+      "name": "harken",
       "source": "./",
-      "description": "Local audio transcription skill for Claude Code — batch and WhatsApp chat-export transcription via the hark CLI, fully offline, no API key."
+      "description": "Local audio transcription skill for Claude Code — batch and WhatsApp chat-export transcription via the harken CLI, fully offline, no API key."
     }
   ]
 }

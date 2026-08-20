@@ -1,4 +1,4 @@
-"""Tests for hark.whatsapp: chat-export parsing and transcription flow."""
+"""Tests for harken.whatsapp: chat-export parsing and transcription flow."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from hark.whatsapp import (
+from harken.whatsapp import (
     Message,
     build_merged_chat,
     build_parser,
@@ -477,13 +477,13 @@ def _build_export_zip(zip_path: Path) -> None:
 
 
 class FakeTranscriber:
-    """Stand-in for hark.core.Transcriber. No faster_whisper involved."""
+    """Stand-in for harken.core.Transcriber. No faster_whisper involved."""
 
     def __init__(self, **kwargs):
         self.kwargs = kwargs
 
     def transcribe(self, path: Path):
-        from hark.core import Segment, TranscriptionResult
+        from harken.core import Segment, TranscriptionResult
 
         text = f"transcript of {path.name}"
         return TranscriptionResult(
@@ -502,7 +502,7 @@ def test_main_end_to_end_selects_extracts_transcribes_and_merges(monkeypatch, tm
     batch orchestration, writers, and merge all run for real against a
     temp directory.
     """
-    import hark.whatsapp as whatsapp
+    import harken.whatsapp as whatsapp
 
     monkeypatch.setattr(whatsapp, "Transcriber", FakeTranscriber)
 
@@ -598,7 +598,7 @@ def test_main_end_to_end_android_export(monkeypatch, tmp_path):
     """Android-format zip through the real main(): chat located via the
     single-root-txt fallback, android headers parsed, `(file attached)`
     markers extracted, date filter applied, merge inlined."""
-    import hark.whatsapp as whatsapp
+    import harken.whatsapp as whatsapp
 
     monkeypatch.setattr(whatsapp, "Transcriber", FakeTranscriber)
 
@@ -655,7 +655,7 @@ def test_main_returns_1_when_a_transcription_fails(monkeypatch, tmp_path):
         def transcribe(self, path):
             raise RuntimeError("boom")
 
-    import hark.whatsapp as whatsapp
+    import harken.whatsapp as whatsapp
 
     monkeypatch.setattr(whatsapp, "Transcriber", FailingTranscriber)
 
@@ -725,7 +725,7 @@ def test_main_merge_does_not_leak_stale_manifest_entries_across_runs(
     must not inline a transcript left over in manifest.jsonl from a wider
     first run onto a line that's outside *this* run's filter.
     """
-    import hark.whatsapp as whatsapp
+    import harken.whatsapp as whatsapp
 
     monkeypatch.setattr(whatsapp, "Transcriber", FakeTranscriber)
 

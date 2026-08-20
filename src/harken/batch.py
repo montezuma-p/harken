@@ -7,8 +7,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from hark.core import Transcriber
-from hark.writers import append_manifest, write_json, write_srt, write_txt
+from harken.core import Transcriber
+from harken.writers import append_manifest, write_json, write_srt, write_txt
 
 AUDIO_EXTENSIONS = {
     ".opus",

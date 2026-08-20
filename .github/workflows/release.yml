@@ -1,21 +1,20 @@
-name: CI
+name: Release
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    tags: ["v*"]
 
 jobs:
-  test:
+  publish:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+    permissions:
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.11"
       - run: uv sync --frozen
       - run: uv run pytest
       - run: uv build
+      - uses: pypa/gh-action-pypi-publish@release/v1

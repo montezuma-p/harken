@@ -1,4 +1,4 @@
-"""Tests for hark.core.Transcriber and its dataclasses."""
+"""Tests for harken.core.Transcriber and its dataclasses."""
 
 from __future__ import annotations
 
@@ -9,17 +9,17 @@ import pytest
 
 
 def test_importing_core_does_not_touch_faster_whisper(monkeypatch):
-    """hark.core must not import faster_whisper at module load time."""
+    """harken.core must not import faster_whisper at module load time."""
     monkeypatch.delitem(sys.modules, "faster_whisper", raising=False)
-    monkeypatch.delitem(sys.modules, "hark.core", raising=False)
+    monkeypatch.delitem(sys.modules, "harken.core", raising=False)
 
-    import hark.core  # noqa: F401
+    import harken.core  # noqa: F401
 
     assert "faster_whisper" not in sys.modules
 
 
 def test_transcribe_raises_file_not_found_before_loading_model(fake_whisper, tmp_path):
-    from hark.core import Transcriber
+    from harken.core import Transcriber
 
     missing = tmp_path / "does-not-exist.opus"
     transcriber = Transcriber()
@@ -31,7 +31,7 @@ def test_transcribe_raises_file_not_found_before_loading_model(fake_whisper, tmp
 
 
 def test_model_loads_lazily_and_is_cached_across_calls(fake_whisper, tmp_path):
-    from hark.core import Transcriber
+    from harken.core import Transcriber
 
     audio = tmp_path / "note.opus"
     audio.write_bytes(b"fake-audio")
@@ -54,7 +54,7 @@ def test_model_loads_lazily_and_is_cached_across_calls(fake_whisper, tmp_path):
 def test_transcriber_defaults_propagate_to_whisper_model(fake_whisper, tmp_path):
     """A bare Transcriber() with no args must reach WhisperModel with the
     documented CPU/int8 defaults."""
-    from hark.core import Transcriber
+    from harken.core import Transcriber
 
     audio = tmp_path / "note.opus"
     audio.write_bytes(b"fake-audio")
@@ -69,7 +69,7 @@ def test_transcriber_defaults_propagate_to_whisper_model(fake_whisper, tmp_path)
 
 
 def test_transcribe_result_fields_with_detected_language(fake_whisper, tmp_path):
-    from hark.core import Transcriber
+    from harken.core import Transcriber
 
     audio = tmp_path / "note.opus"
     audio.write_bytes(b"fake-audio")
@@ -87,7 +87,7 @@ def test_transcribe_result_fields_with_detected_language(fake_whisper, tmp_path)
 
 
 def test_transcribe_forces_language_when_set(fake_whisper, tmp_path):
-    from hark.core import Transcriber
+    from harken.core import Transcriber
 
     audio = tmp_path / "note.opus"
     audio.write_bytes(b"fake-audio")
@@ -105,7 +105,7 @@ def test_transcribe_strips_leading_space_from_segment_text(
 ):
     """Real faster-whisper segments carry a leading space (tokenizer artifact);
     joined text and per-segment cues must not inherit it."""
-    from hark.core import Transcriber
+    from harken.core import Transcriber
     from conftest import FakeInfo, FakeSegment
 
     audio = tmp_path / "note.opus"
@@ -130,7 +130,7 @@ def test_transcribe_strips_leading_space_from_segment_text(
 
 
 def test_transcribe_calls_model_with_expected_args(fake_whisper, tmp_path):
-    from hark.core import Transcriber
+    from harken.core import Transcriber
 
     audio = tmp_path / "note.opus"
     audio.write_bytes(b"fake-audio")

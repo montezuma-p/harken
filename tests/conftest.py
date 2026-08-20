@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for hark tests."""
+"""Shared pytest fixtures for harken tests."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ class FakeWhisperModel:
 def fake_whisper(monkeypatch):
     """Install a stub `faster_whisper` module into sys.modules.
 
-    Ensures hark.core never has to import the real (heavy) library
+    Ensures harken.core never has to import the real (heavy) library
     during tests. Resets the recorded instances before each test.
     """
     FakeWhisperModel.instances = []

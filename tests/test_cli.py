@@ -1,4 +1,4 @@
-"""Tests for hark.cli: argument parsing and whatsapp delegation."""
+"""Tests for harken.cli: argument parsing and whatsapp delegation."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import types
 
 import pytest
 
-from hark import cli
+from harken import cli
 
 
 # --- build_parser ---------------------------------------------------------
@@ -66,14 +66,14 @@ def test_parser_rejects_bad_format():
 
 def test_main_delegates_whatsapp_subcommand(monkeypatch):
     calls = []
-    fake_module = types.ModuleType("hark.whatsapp")
+    fake_module = types.ModuleType("harken.whatsapp")
 
     def fake_main(argv):
         calls.append(argv)
         return 0
 
     fake_module.main = fake_main
-    monkeypatch.setitem(sys.modules, "hark.whatsapp", fake_module)
+    monkeypatch.setitem(sys.modules, "harken.whatsapp", fake_module)
 
     exit_code = cli.main(["whatsapp", "export.zip", "--merge"])
 
@@ -82,13 +82,13 @@ def test_main_delegates_whatsapp_subcommand(monkeypatch):
 
 
 def test_main_batch_mode_does_not_require_whatsapp_module(monkeypatch):
-    monkeypatch.delitem(sys.modules, "hark.whatsapp", raising=False)
+    monkeypatch.delitem(sys.modules, "harken.whatsapp", raising=False)
     monkeypatch.setattr(cli, "collect_audio_files", lambda inputs: [])
 
     exit_code = cli.main(["a.wav"])
 
     assert exit_code == 0
-    assert "hark.whatsapp" not in sys.modules
+    assert "harken.whatsapp" not in sys.modules
 
 
 # --- main(): lang auto -> language=None -----------------------------------
@@ -139,7 +139,7 @@ def test_main_end_to_end_success_writes_real_output(monkeypatch, tmp_path):
     real against a temp directory, so this exercises the actual wiring
     rather than a chain of mocked-out seams.
     """
-    from hark.core import Segment, TranscriptionResult
+    from harken.core import Segment, TranscriptionResult
 
     class FakeTranscriber:
         def __init__(self, **kwargs):
@@ -169,7 +169,7 @@ def test_main_end_to_end_success_writes_real_output(monkeypatch, tmp_path):
 
 
 def test_main_returns_1_when_a_file_fails(monkeypatch, tmp_path):
-    from hark.batch import BatchStats
+    from harken.batch import BatchStats
 
     monkeypatch.setattr(cli, "collect_audio_files", lambda inputs: [tmp_path / "a.wav"])
     monkeypatch.setattr(

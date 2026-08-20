@@ -1,19 +1,25 @@
-"""Command-line entry point for hark: batch mode and whatsapp delegation."""
+"""Command-line entry point for harken: batch mode and whatsapp delegation."""
 
 from __future__ import annotations
 
 import argparse
 import sys
+from importlib.metadata import version
 from pathlib import Path
 
-from hark.batch import collect_audio_files, run_batch
-from hark.core import Transcriber
+from harken.batch import collect_audio_files, run_batch
+from harken.core import Transcriber
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="hark",
+        prog="harken",
         description="Local audio transcription CLI (faster-whisper, CPU)",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {version('harken')}",
     )
     parser.add_argument(
         "inputs", nargs="+", help="Audio files, directories, or globs to transcribe"
@@ -44,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
 
     if argv and argv[0] == "whatsapp":
-        from hark.whatsapp import main as whatsapp_main
+        from harken.whatsapp import main as whatsapp_main
 
         return whatsapp_main(argv[1:])
 
