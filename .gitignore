@@ -1,13 +1,6 @@
 # Rust
 target/
 
-# Python (legacy — remove when the Python tree is deleted in the port)
-.venv/
-__pycache__/
-*.egg-info/
-dist/
-.pytest_cache/
-
 # Transcription outputs embed full transcript text — never commit them
 transcripts/
 *-transcripts/

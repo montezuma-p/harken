@@ -2,9 +2,12 @@
 
 **Local audio transcription for Claude Code and any agent — batch, fully offline, no API key.**
 
-[![PyPI](https://img.shields.io/pypi/v/harken)](https://pypi.org/project/harken/)
+[![CI](https://github.com/montezuma-p/harken/actions/workflows/ci.yml/badge.svg)](https://github.com/montezuma-p/harken/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Powered by [faster-whisper](https://github.com/SYSTRAN/faster-whisper).
+A single static binary powered by [whisper.cpp](https://github.com/ggml-org/whisper.cpp).
+No Python, no ffmpeg, no runtime dependencies — audio decoding (opus, mp3,
+m4a, wav, flac, …) happens in-process.
 
 ## Why
 
@@ -13,30 +16,31 @@ sensitive content. `harken` transcribes everything on your own machine:
 no audio, and no transcript, ever leaves the device. There is no API key,
 no upload step, no cloud dependency.
 
-- Runs on CPU with `int8` quantization by default — no GPU required.
+- Runs on CPU by default — no GPU required.
 - The model loads once per run and is reused for every file in a batch.
 - Two modes: transcribe loose audio files (or whole folders), or point it
   straight at a WhatsApp chat-export `.zip` and let it pull out only the
   voice notes.
 
-## Quickstart
+## Install
 
-Requires Python >= 3.11. With [uv](https://docs.astral.sh/uv/), no install
-step at all:
+One-liner (Linux/macOS):
 
 ```bash
-uvx harken voice-note.opus
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/montezuma-p/harken/releases/latest/download/harken-installer.sh | sh
 ```
 
-To keep the command on PATH: `uv tool install harken` (or
-`pip install harken`), then `harken --help`.
+Windows (PowerShell):
 
-For development, clone and run from source:
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/montezuma-p/harken/releases/latest/download/harken-installer.ps1 | iex"
+```
+
+Other options (**SOON** — crates.io publish pending):
 
 ```bash
-git clone https://github.com/montezuma-p/harken && cd harken
-uv sync
-uv run harken voice-note.opus
+cargo binstall harken        # prebuilt binary via cargo-binstall
+cargo install harken --locked  # build from source (needs cmake + a C++ toolchain)
 ```
 
 ## Use with Claude Code
@@ -50,8 +54,8 @@ reaching for a cloud API. Install it as a plugin:
 /plugin install harken@harken
 ```
 
-That's all — the skill runs the CLI with `uvx harken`, so the plugin works
-on its own with no separate install. (Alternatively: clone the repo and the
+The skill invokes the `harken` binary and knows how to install it with the
+one-liner above if it is missing. (Alternatively: clone the repo and the
 project-scoped skill in `.claude/skills/` is picked up automatically, or
 copy/symlink `.claude/skills/transcribe-audio/` into `~/.claude/skills/`.)
 
@@ -90,8 +94,7 @@ failures).
 
 ### WhatsApp export mode — transcribe voice notes straight from a chat export
 
-Export a chat from WhatsApp ("Export chat" → without media, or with media
-— either works, `harken` only needs the audio attachments) and point
+Export a chat from WhatsApp ("Export chat" → with media) and point
 `harken` at the resulting `.zip`:
 
 ```bash
@@ -107,7 +110,7 @@ harken whatsapp export.zip --from 2026-07-01 --to 2026-07-15 --merge --out ./mar
 
 Flags: `--out DIR` (default `./<zip-stem>-transcripts`), `--from` / `--to`
 (`YYYY-MM-DD`, inclusive on both ends), `--merge`, plus `--model`, `--lang`,
-`--device`, `--force` as in batch mode.
+`--format`, `--device`, `--force` as in batch mode.
 
 `harken whatsapp` locates the chat log inside the zip, selects only the
 messages carrying an audio attachment within the date range, extracts
@@ -125,28 +128,35 @@ inferred from the chat itself; when every date is ambiguous (all components
 
 ## Models & hardware
 
-- `small` (default) — good accuracy/speed tradeoff on CPU; fine for most
-  voice notes and casual recordings.
-- `medium` — noticeably better accuracy (accents, background noise,
-  technical vocabulary), at a real CPU time cost. Use it when the content
-  matters enough to wait.
+`--model` accepts a [whisper.cpp ggml model](https://huggingface.co/ggerganov/whisper.cpp)
+name or a path to a local `.bin` file:
+
+- `small` (default, ~466 MB) — good accuracy/speed tradeoff on CPU; fine
+  for most voice notes and casual recordings.
+- `medium` (~1.5 GB) — noticeably better accuracy (accents, background
+  noise, technical vocabulary), at a real CPU time cost.
+- Quantized variants — append `-q5_0`, `-q5_1`, or `-q8_0` to any name
+  (e.g. `small-q5_1`, ~182 MB): ~60% smaller download, marginal quality
+  loss.
+- Also: `tiny`, `base`, `large-v3`, `large-v3-turbo`, and their `.en`
+  English-only variants.
 
 The chosen model is downloaded once, on first use, to
-`~/.cache/huggingface` (~460 MB for `small`; larger models are bigger).
-Subsequent runs reuse the cached model with no network access.
+`~/.cache/harken/models`. Subsequent runs reuse the cached model with no
+network access.
 
-CPU with `int8` quantization is the safe default everywhere. If your GPU
-is supported by [CTranslate2](https://github.com/OpenNMT/CTranslate2),
-pass `--device cuda`.
+CPU is the safe default everywhere. Passing `--device` with anything other
+than `cpu` enables GPU offload when the binary was built with a GPU backend
+(Metal/CUDA/Vulkan — see the whisper-rs build features).
 
 ## Development
 
 ```bash
-uv run pytest
+make check   # fmt + clippy + tests + cargo-audit + cargo-machete
 ```
 
-Tests never load a real Whisper model — `faster_whisper.WhisperModel` is
-stubbed out, so the suite runs instantly and offline.
+Tests never load a real Whisper model — the transcription engine is a
+trait, and the suite runs against a fake, so it is instant and offline.
 
 ## License
 

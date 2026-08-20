@@ -5,22 +5,26 @@ description: Use when a task requires reading, transcribing, or extracting conte
 
 # Transcribe Audio (harken, local-only)
 
-Transcribe audio with **harken**, a local faster-whisper CLI. Audio never
-leaves the machine — do not send audio to cloud transcription APIs, and do
-not write inline whisper one-liners (they reload the model per file; harken
-loads it once per batch).
+Transcribe audio with **harken**, a local whisper.cpp CLI (single static
+binary). Audio never leaves the machine — do not send audio to cloud
+transcription APIs, and do not write inline whisper one-liners (they reload
+the model per file; harken loads it once per batch).
 
-Invocation: use `harken ...` if the command is on PATH (installed via
-`uv tool install harken`); otherwise run `uvx harken ...` — it fetches the
-CLI from PyPI on first use and works from any directory, no clone needed.
+Invocation: use `harken ...` if the command is on PATH. If it is missing,
+install it with the one-liner (no Python, no runtime deps):
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/montezuma-p/harken/releases/latest/download/harken-installer.sh | sh
+```
 
 ```bash
 # Batch: files, dirs, or globs (model loads once per run)
-uvx harken ~/Downloads/audios/*.opus --out /path/to/transcripts
+harken ~/Downloads/audios/*.opus --out /path/to/transcripts
 
 # WhatsApp export zip: no manual unzip needed; dates inclusive
 # (quote paths with spaces using $HOME — a quoted ~ does not expand)
-uvx harken whatsapp "$HOME/Downloads/WhatsApp Chat - X.zip" \
+harken whatsapp "$HOME/Downloads/WhatsApp Chat - X.zip" \
   --from 2026-07-13 --to 2026-07-14 --out /path/to/out --merge
 ```
 
@@ -28,11 +32,11 @@ uvx harken whatsapp "$HOME/Downloads/WhatsApp Chat - X.zip" \
   `--out`. Existing outputs are skipped; `--force` redoes them.
 - `--merge` writes `_chat.transcribed.txt` — the chat with each voice
   note's transcript inlined (`>> [transcript] ...`).
-- Defaults: `--lang pt`, `--model small`, CPU int8 (safe everywhere, no
-  GPU required).
+- Defaults: `--lang pt`, `--model small`, CPU (safe everywhere, no GPU
+  required).
 - `--lang auto` for non-Portuguese audio; `--model medium` when accuracy
-  matters more than speed; `--format json|srt` for timestamps; `--device
-  cuda` only if the GPU is supported by CTranslate2.
-- First ever run downloads the model (~460 MB) to `~/.cache/huggingface`;
-  after that it works fully offline.
+  matters more than speed; `--model small-q5_1` for a 60% smaller download;
+  `--format json|srt` for timestamps.
+- First ever run downloads the ggml model (~466 MB for `small`) to
+  `~/.cache/harken/models`; after that it works fully offline.
 - Full docs: [README](https://github.com/montezuma-p/harken#readme).
