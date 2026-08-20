@@ -1,4 +1,4 @@
-.PHONY: build test fmt fmt-fix lint audit deps check clean install-dev-tools
+.PHONY: build test fmt fmt-fix lint audit deps check clean install-dev-tools bench demo
 
 build:
 	cargo build
@@ -30,3 +30,14 @@ install-dev-tools:
 
 clean:
 	cargo clean
+
+# Slow, needs models + a release build — never part of 'check'.
+# AUDIO=<file> to bench your own recording; defaults to synthetic TTS audio.
+bench:
+	cargo build --release
+	bash scripts/bench/bench.sh $(or $(AUDIO),--synth)
+
+# Records docs/assets/demo.gif (needs asciinema, agg, ffmpeg, espeak-ng/piper).
+demo:
+	cargo build --release
+	bash scripts/demo/record-demo.sh

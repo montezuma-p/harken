@@ -142,8 +142,20 @@ name or a path to a local `.bin` file:
 - Quantized variants — append `-q5_0`, `-q5_1`, or `-q8_0` to any name
   (e.g. `small-q5_1`, ~182 MB): ~60% smaller download, marginal quality
   loss.
-- Also: `tiny`, `base`, `large-v3`, `large-v3-turbo`, and their `.en`
-  English-only variants.
+- Also: `tiny`, `base`, `large-v1`, `large-v2`, `large-v3`,
+  `large-v3-turbo`, and the `.en` English-only variants.
+
+With the default model, an hour of audio transcribes in ~22 minutes on a
+2017 desktop CPU — no GPU involved. Measured on an Intel i5-7400 (4 threads),
+10 minutes of synthetic Portuguese speech, single run, GNU `time -v`, model
+download excluded (reproduce with `make bench`):
+
+| Model | Wall time (10 min audio) | Speed | Peak RAM |
+|---|---|---|---|
+| `tiny` | 42 s | 14.2x realtime | 360 MB |
+| `small` (default) | 3 min 40 s | 2.7x realtime | 912 MB |
+| `small-q5_1` | 3 min 13 s | 3.1x realtime | 628 MB |
+| `medium` | 9 min 54 s | 1.0x realtime | 2.0 GB |
 
 The chosen model is downloaded once, on first use, to
 `~/.cache/harken/models`. Subsequent runs reuse the cached model with no
