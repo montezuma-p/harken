@@ -176,7 +176,13 @@ fn run_batch_force_reprocesses_existing_output() {
     fs::write(out_dir.join("a.txt"), "already here\n").unwrap();
     let mut engine = FakeEngine::new(None);
 
-    let stats = run_batch(std::slice::from_ref(&a), &out_dir, &mut engine, OutputFormat::Txt, true);
+    let stats = run_batch(
+        std::slice::from_ref(&a),
+        &out_dir,
+        &mut engine,
+        OutputFormat::Txt,
+        true,
+    );
 
     assert_eq!(
         stats,

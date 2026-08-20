@@ -2,6 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+
 pub type EngineError = Box<dyn std::error::Error + Send + Sync>;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -67,9 +69,10 @@ pub fn assemble_result(
 /// Real engine backed by whisper.cpp via whisper-rs. The model is loaded
 /// lazily on the first transcribe() call and reused for the whole batch.
 pub struct WhisperCppEngine {
-    pub model: String,
-    pub device: String,
-    pub language: Option<String>,
+    model: String,
+    device: String,
+    language: Option<String>,
+    ctx: Option<WhisperContext>,
 }
 
 impl WhisperCppEngine {
@@ -78,7 +81,25 @@ impl WhisperCppEngine {
             model,
             device,
             language,
+            ctx: None,
         }
+    }
+
+    fn load_context(&mut self) -> Result<&WhisperContext, EngineError> {
+        if self.ctx.is_none() {
+            // Route whisper.cpp/ggml logs into the (absent) log backend —
+            // i.e. silence their chatty stderr output.
+            whisper_rs::install_logging_hooks();
+            let model_path = crate::model::resolve_model(&self.model)?;
+            let mut params = WhisperContextParameters::default();
+            params.use_gpu(self.device != "cpu");
+            let ctx = WhisperContext::new_with_params(
+                model_path.to_str().ok_or("model path is not valid UTF-8")?,
+                params,
+            )?;
+            self.ctx = Some(ctx);
+        }
+        Ok(self.ctx.as_ref().expect("just loaded"))
     }
 }
 
@@ -87,6 +108,40 @@ impl Transcriber for WhisperCppEngine {
         if !path.exists() {
             return Err(format!("Audio file not found: {}", path.display()).into());
         }
-        Err("whisper.cpp engine not yet wired (M3)".into())
+
+        let samples = crate::audio::decode_audio_16k_mono(path)?;
+        let duration = samples.len() as f64 / crate::audio::WHISPER_SAMPLE_RATE as f64;
+        let language = self.language.clone();
+
+        let ctx = self.load_context()?;
+        let mut state = ctx.create_state()?;
+
+        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+        params.set_language(Some(language.as_deref().unwrap_or("auto")));
+        params.set_print_special(false);
+        params.set_print_progress(false);
+        params.set_print_realtime(false);
+        params.set_print_timestamps(false);
+
+        state.full(params, &samples)?;
+
+        let mut segments = Vec::new();
+        for segment in state.as_iter() {
+            // Whisper timestamps are in centiseconds.
+            segments.push(Segment {
+                start: segment.start_timestamp() as f64 / 100.0,
+                end: segment.end_timestamp() as f64 / 100.0,
+                text: segment.to_str_lossy()?.into_owned(),
+            });
+        }
+
+        let detected = match &self.language {
+            Some(lang) => lang.clone(),
+            None => whisper_rs::get_lang_str(state.full_lang_id_from_state())
+                .unwrap_or("unknown")
+                .to_string(),
+        };
+
+        Ok(assemble_result(path, segments, detected, duration))
     }
 }
