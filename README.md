@@ -5,6 +5,8 @@
 [![CI](https://github.com/montezuma-p/harken/actions/workflows/ci.yml/badge.svg)](https://github.com/montezuma-p/harken/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+![harken transcribing the voice notes in a WhatsApp chat export, fully offline](https://raw.githubusercontent.com/montezuma-p/harken/main/docs/assets/demo.gif)
+
 A single static binary powered by [whisper.cpp](https://github.com/ggml-org/whisper.cpp).
 No Python, no ffmpeg, no runtime dependencies — audio decoding (opus, mp3,
 m4a, wav, flac, …) happens in-process.
