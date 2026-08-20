@@ -1,0 +1,5 @@
+[env]
+# audiopus_sys vendors an opus tree whose CMakeLists declares a minimum
+# version below what CMake 4 (GitHub macOS runners) still accepts; this
+# floor keeps that configure step working everywhere.
+CMAKE_POLICY_VERSION_MINIMUM = "3.5"
