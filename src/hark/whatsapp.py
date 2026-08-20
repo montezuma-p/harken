@@ -23,7 +23,13 @@ from hark.core import Transcriber
 _MESSAGE_RE = re.compile(
     r"^‎?\[(\d{2}/\d{2}/\d{4}), (\d{2}:\d{2}:\d{2})\] ([^:]+): (.*)$"
 )
+_ANDROID_MESSAGE_RE = re.compile(
+    r"^(\d{1,2}/\d{1,2}/\d{2,4}),? "
+    r"(\d{1,2}:\d{2}(?:[\s ]?[APap]\.?[Mm]\.?)?)"
+    r" - ([^:]+): (.*)$"
+)
 _ATTACHMENT_RE = re.compile(r"<(?:anexado|attached): ([^>]+)>")
+_ANDROID_ATTACHMENT_RE = re.compile(r"^(\S+\.\w+) \((?:file attached|arquivo anexado)\)")
 _INVISIBLE_CHARS = "‎‏"
 
 
@@ -40,25 +46,65 @@ def _strip_invisible(line: str) -> str:
     return line.translate({ord(c): None for c in _INVISIBLE_CHARS})
 
 
+def _parse_date(date_str: str, day_first: bool) -> date:
+    a, b, year = (int(part) for part in date_str.split("/"))
+    if year < 100:
+        year += 2000
+    day, month = (a, b) if day_first else (b, a)
+    return date(year, month, day)
+
+
+def _infer_day_first(date_strs: list[str]) -> bool:
+    """Decide the date order of an Android chat from its whole corpus of
+    header dates: any first component > 12 proves day-first, any second
+    component > 12 proves month-first. Fully ambiguous chats default to
+    day-first (hark is pt-centric)."""
+    components = [tuple(int(p) for p in ds.split("/")[:2]) for ds in date_strs]
+    if any(a > 12 for a, _ in components):
+        return True
+    if any(b > 12 for _, b in components):
+        return False
+    return True
+
+
 def parse_chat(text: str) -> list[Message]:
     """Parse raw WhatsApp chat-export text into a list of Message.
 
-    Lines that don't match the message-header pattern are continuations of
-    the previous message and get folded into its body. Any lines before the
-    first recognized message header (e.g. the encryption notice) are
-    dropped.
+    The export format (iOS `[date, time] sender: body` or Android
+    `date, time - sender: body`) is detected from the first line matching
+    either header pattern and applied to the whole chat. Lines that don't
+    match the header pattern are continuations of the previous message and
+    get folded into its body. Any lines before the first recognized message
+    header (e.g. the encryption notice) are dropped.
     """
-    messages: list[Message] = []
+    raw_lines = text.splitlines()
+    lines = [_strip_invisible(line) for line in raw_lines]
 
-    for i, raw_line in enumerate(text.splitlines()):
-        stripped = _strip_invisible(raw_line)
-        match = _MESSAGE_RE.match(stripped)
+    pattern = None
+    for line in lines:
+        if _MESSAGE_RE.match(line):
+            pattern = _MESSAGE_RE
+            break
+        if _ANDROID_MESSAGE_RE.match(line):
+            pattern = _ANDROID_MESSAGE_RE
+            break
+    if pattern is None:
+        return []
+
+    day_first = True
+    if pattern is _ANDROID_MESSAGE_RE:
+        day_first = _infer_day_first(
+            [m.group(1) for m in map(pattern.match, lines) if m]
+        )
+
+    messages: list[Message] = []
+    for i, line in enumerate(lines):
+        match = pattern.match(line)
         if match:
             date_str, time_str, sender, body = match.groups()
-            msg_date = datetime.strptime(date_str, "%d/%m/%Y").date()
             messages.append(
                 Message(
-                    date=msg_date,
+                    date=_parse_date(date_str, day_first),
                     time=time_str,
                     sender=sender,
                     body=body,
@@ -66,14 +112,16 @@ def parse_chat(text: str) -> list[Message]:
                 )
             )
         elif messages:
-            messages[-1].body += "\n" + raw_line
+            messages[-1].body += "\n" + raw_lines[i]
 
     return messages
 
 
 def extract_attachment(body: str) -> str | None:
-    """Return the attachment filename in `body`, if any (anexado/attached)."""
-    match = _ATTACHMENT_RE.search(body)
+    """Return the attachment filename in `body`, if any — iOS
+    `<anexado|attached: file>` or Android `file (file attached|arquivo
+    anexado)` markers."""
+    match = _ATTACHMENT_RE.search(body) or _ANDROID_ATTACHMENT_RE.match(body)
     return match.group(1) if match else None
 
 

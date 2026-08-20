@@ -155,6 +155,148 @@ def test_parse_chat_leading_system_line_is_ignored():
     assert messages[0].line_index == 1
 
 
+# --- parse_chat: Android format -------------------------------------------------
+
+
+def test_parse_chat_android_single_message():
+    text = "10/07/2026, 21:04 - Bob: fica no aguardo ai"
+
+    messages = parse_chat(text)
+
+    assert messages == [
+        Message(
+            date=date(2026, 7, 10),
+            time="21:04",
+            sender="Bob",
+            body="fica no aguardo ai",
+            line_index=0,
+        )
+    ]
+
+
+def test_parse_chat_android_without_comma_after_date():
+    text = "10/07/2026 21:04 - Bob: oi"
+
+    messages = parse_chat(text)
+
+    assert len(messages) == 1
+    assert messages[0].date == date(2026, 7, 10)
+    assert messages[0].sender == "Bob"
+
+
+def test_parse_chat_android_two_digit_year():
+    text = "10/07/26, 21:04 - Bob: oi"
+
+    messages = parse_chat(text)
+
+    assert len(messages) == 1
+    assert messages[0].date == date(2026, 7, 10)
+
+
+def test_parse_chat_android_12h_time_with_narrow_nbsp():
+    narrow_nbsp = " "
+    text = f"13/07/26, 9:05{narrow_nbsp}PM - Bob: hi"
+
+    messages = parse_chat(text)
+
+    assert len(messages) == 1
+    assert messages[0].date == date(2026, 7, 13)
+    assert messages[0].time == f"9:05{narrow_nbsp}PM"
+
+
+def test_parse_chat_android_day_first_when_first_component_exceeds_12():
+    text = (
+        "10/07/2026, 21:04 - Bob: oi\n"
+        "13/07/2026, 21:05 - Bob: tudo certo"
+    )
+
+    messages = parse_chat(text)
+
+    assert [m.date for m in messages] == [date(2026, 7, 10), date(2026, 7, 13)]
+
+
+def test_parse_chat_android_month_first_when_second_component_exceeds_12():
+    text = (
+        "7/10/26, 9:04 PM - Bob: hi\n"
+        "7/13/26, 9:05 PM - Bob: all good"
+    )
+
+    messages = parse_chat(text)
+
+    assert [m.date for m in messages] == [date(2026, 7, 10), date(2026, 7, 13)]
+
+
+def test_parse_chat_android_ambiguous_dates_default_day_first():
+    text = "05/07/2026, 21:04 - Bob: oi"
+
+    messages = parse_chat(text)
+
+    assert messages[0].date == date(2026, 7, 5)
+
+
+def test_parse_chat_android_joins_continuation_lines():
+    text = (
+        "11/07/2026, 10:00 - Bob: primeira parte\n"
+        "segunda parte (continuacao)"
+    )
+
+    messages = parse_chat(text)
+
+    assert len(messages) == 1
+    assert messages[0].body == "primeira parte\nsegunda parte (continuacao)"
+
+
+def test_parse_chat_android_leading_system_line_is_ignored():
+    text = (
+        "10/07/2026, 21:00 - Messages and calls are end-to-end encrypted. "
+        "Tap to learn more.\n"
+        "10/07/2026, 21:04 - Bob: oi"
+    )
+
+    messages = parse_chat(text)
+
+    assert len(messages) == 1
+    assert messages[0].sender == "Bob"
+    assert messages[0].line_index == 1
+
+
+def test_parse_chat_does_not_mix_formats():
+    """Format is detected once per chat: after an android header, an
+    iOS-style line in a message body is a continuation, not a header."""
+    text = (
+        "10/07/2026, 21:04 - Bob: olha esse formato:\n"
+        "[10/07/2026, 09:00:00] Alice: nao sou uma mensagem"
+    )
+
+    messages = parse_chat(text)
+
+    assert len(messages) == 1
+    assert messages[0].sender == "Bob"
+    assert messages[0].line_index == 0
+    assert "nao sou uma mensagem" in messages[0].body
+
+
+# --- extract_attachment: Android format ------------------------------------------
+
+
+def test_extract_attachment_android_file_attached():
+    assert (
+        extract_attachment("PTT-20260710-WA0001.opus (file attached)")
+        == "PTT-20260710-WA0001.opus"
+    )
+
+
+def test_extract_attachment_android_arquivo_anexado():
+    assert (
+        extract_attachment("PTT-20260710-WA0001.opus (arquivo anexado)")
+        == "PTT-20260710-WA0001.opus"
+    )
+
+
+def test_extract_attachment_android_media_omitted_returns_none():
+    assert extract_attachment("<Media omitted>") is None
+
+
 # --- select_audio_messages -----------------------------------------------------
 
 
@@ -428,6 +570,80 @@ def test_main_end_to_end_selects_extracts_transcribes_and_merges(monkeypatch, tm
         f"{U200E}<anexado: 00004-IMG-2026-07-10.jpg>"
     )
     # continuation line preserved verbatim
+    assert "segunda parte (continuacao)" in merged_lines
+
+
+def _build_export_zip_android(zip_path: Path) -> None:
+    chat_text = (
+        "10/07/2026, 08:55 - Messages and calls are end-to-end encrypted. "
+        "Tap to learn more.\n"
+        "10/07/2026, 09:00 - Alice: fica no aguardo ai\n"
+        "10/07/2026, 09:05 - Bob: PTT-20260710-WA0001.opus (file attached)\n"
+        "11/07/2026, 10:00 - Bob: primeira parte\n"
+        "segunda parte (continuacao)\n"
+        "12/07/2026, 08:00 - Alice: PTT-20260712-WA0002.opus (arquivo anexado)\n"
+        "20/07/2026, 08:00 - Bob: PTT-20260720-WA0003.opus (file attached)\n"
+        "10/07/2026, 09:10 - Bob: IMG-20260710-WA0004.jpg (file attached)\n"
+        "10/07/2026, 09:11 - Bob: <Media omitted>\n"
+    )
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("WhatsApp Chat with Bob.txt", chat_text)
+        zf.writestr("PTT-20260710-WA0001.opus", b"fake-audio-1")
+        zf.writestr("PTT-20260712-WA0002.opus", b"fake-audio-2")
+        zf.writestr("PTT-20260720-WA0003.opus", b"fake-audio-3")
+        zf.writestr("IMG-20260710-WA0004.jpg", b"fake-image")
+
+
+def test_main_end_to_end_android_export(monkeypatch, tmp_path):
+    """Android-format zip through the real main(): chat located via the
+    single-root-txt fallback, android headers parsed, `(file attached)`
+    markers extracted, date filter applied, merge inlined."""
+    import hark.whatsapp as whatsapp
+
+    monkeypatch.setattr(whatsapp, "Transcriber", FakeTranscriber)
+
+    zip_path = tmp_path / "chat_export.zip"
+    _build_export_zip_android(zip_path)
+    out_dir = tmp_path / "out"
+
+    exit_code = main(
+        [
+            str(zip_path),
+            "--out",
+            str(out_dir),
+            "--from",
+            "2026-07-10",
+            "--to",
+            "2026-07-12",
+            "--merge",
+        ]
+    )
+
+    assert exit_code == 0
+
+    audio_dir = out_dir / "audio"
+    assert (audio_dir / "PTT-20260710-WA0001.opus").read_bytes() == b"fake-audio-1"
+    assert (audio_dir / "PTT-20260712-WA0002.opus").read_bytes() == b"fake-audio-2"
+    assert not (audio_dir / "PTT-20260720-WA0003.opus").exists()
+    assert not (audio_dir / "IMG-20260710-WA0004.jpg").exists()
+
+    manifest_lines = (out_dir / "manifest.jsonl").read_text().splitlines()
+    assert len(manifest_lines) == 2
+
+    merged_lines = (out_dir / "_chat.transcribed.txt").read_text().splitlines()
+    idx_a = merged_lines.index(
+        "10/07/2026, 09:05 - Bob: PTT-20260710-WA0001.opus (file attached)"
+    )
+    assert merged_lines[idx_a + 1] == (
+        "    >> [transcript] transcript of PTT-20260710-WA0001.opus"
+    )
+    idx_c = merged_lines.index(
+        "20/07/2026, 08:00 - Bob: PTT-20260720-WA0003.opus (file attached)"
+    )
+    # out-of-range attachment stays untouched: no transcript line follows it
+    assert merged_lines[idx_c + 1] == (
+        "10/07/2026, 09:10 - Bob: IMG-20260710-WA0004.jpg (file attached)"
+    )
     assert "segunda parte (continuacao)" in merged_lines
 
 

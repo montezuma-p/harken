@@ -115,8 +115,10 @@ the full original chat, with each transcribed attachment line immediately
 followed by a `    >> [transcript] <text>` line. Everything outside the
 date range, and every non-audio attachment, is left untouched.
 
-Currently the parser targets the iOS export format; Android support is
-tracked in the issues.
+Both iOS and Android export formats are auto-detected (per chat, from the
+first message header). Android date order (day-first vs month-first) is
+inferred from the chat itself; when every date is ambiguous (all components
+<= 12), day-first is assumed.
 
 ## Models & hardware
 
