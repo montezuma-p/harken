@@ -144,5 +144,9 @@ Behaviors the tests pin down and that are easy to break by accident:
   enabled in released binaries — cargo-dist has no clean per-target feature
   story. Metal on macOS is the first candidate; document as build-from-source
   until then.
-- **crates.io publish pending** — the README's `cargo install harken` /
-  `cargo binstall harken` lines are aspirational until the crate is published.
+- **Published on crates.io** since v0.3.1 — `cargo install harken` /
+  `cargo binstall harken` work. Note: the crate builds whisper.cpp and
+  (without system libopus) the vendored opus tree, so source installs need
+  cmake + a C++ toolchain; CMake >= 4 hosts may need
+  `CMAKE_POLICY_VERSION_MINIMUM=3.5` (the repo's `.cargo/config.toml` does
+  not travel inside the published package).

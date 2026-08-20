@@ -36,12 +36,16 @@ Windows (PowerShell):
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/montezuma-p/harken/releases/latest/download/harken-installer.ps1 | iex"
 ```
 
-Other options (**SOON** — crates.io publish pending):
+Other options:
 
 ```bash
 cargo binstall harken        # prebuilt binary via cargo-binstall
 cargo install harken --locked  # build from source (needs cmake + a C++ toolchain)
 ```
+
+> Building from source with CMake >= 4 and no system libopus? The vendored
+> opus tree declares an old CMake minimum; prepend
+> `CMAKE_POLICY_VERSION_MINIMUM=3.5` to the `cargo install` line.
 
 ## Use with Claude Code
 

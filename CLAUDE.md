@@ -1,7 +1,7 @@
 # CLAUDE.md — harken
 
 Local, offline audio transcription CLI (whisper.cpp via whisper-rs) with WhatsApp
-chat-export support. Rust crate `harken` v0.3.0 — full port from Python is done,
+chat-export support. Rust crate `harken` — full port from Python is done,
 the Python tree is gone. Architecture map: `docs/ARCHITECTURE.md`.
 
 Local context: if an untracked `hub/` dir exists, read `hub/README.md` (personal
@@ -43,8 +43,10 @@ notes, roadmap, ADRs — never commit it).
 
 cargo-dist 0.32. Pushing a `v*` tag builds GitHub Releases for 5 targets
 (linux x64/arm64, macOS x64/arm64, windows x64; arm64-linux on a native
-`ubuntu-24.04-arm` runner) plus shell/powershell installers. crates.io publish
-is still pending — README's `cargo install`/`cargo binstall` lines depend on it.
+`ubuntu-24.04-arm` runner) plus shell/powershell installers. The crate is
+published on crates.io (`cargo publish` is manual, run it on the same commit
+as the `v*` tag). `Cargo.toml` `version` and `.claude-plugin/plugin.json`
+`version` must bump together.
 
 ## Skill / plugin
 
