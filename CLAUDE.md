@@ -4,6 +4,9 @@ Local, offline audio transcription CLI (whisper.cpp via whisper-rs) with WhatsAp
 chat-export support. Rust crate `harken` v0.3.0 — full port from Python is done,
 the Python tree is gone. Architecture map: `docs/ARCHITECTURE.md`.
 
+Local context: if an untracked `hub/` dir exists, read `hub/README.md` (personal
+notes, roadmap, ADRs — never commit it).
+
 ## Commands
 
 - `make check` — full local CI: `fmt` + `clippy -D warnings` + `test` + `cargo audit` + `cargo machete`. Run before claiming anything done.
