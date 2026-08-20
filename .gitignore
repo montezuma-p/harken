@@ -1,3 +1,7 @@
+# Rust
+target/
+
+# Python (legacy — remove when the Python tree is deleted in the port)
 .venv/
 __pycache__/
 *.egg-info/
@@ -8,4 +12,6 @@ dist/
 transcripts/
 *-transcripts/
 
+# Local tooling noise
+.playwright-mcp/
 .claude/settings.local.json

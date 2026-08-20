@@ -1,0 +1,9 @@
+//! harken — local, offline audio transcription (whisper.cpp) with
+//! WhatsApp chat-export support.
+
+pub mod batch;
+pub mod cli;
+pub mod engine;
+pub mod model;
+pub mod whatsapp;
+pub mod writers;
