@@ -1,8 +1,11 @@
 //! Core transcription types and the Transcriber trait.
 
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::path::{Path, PathBuf};
+use std::ptr;
+use std::sync::Once;
 
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+use crate::ffi;
 
 pub type EngineError = Box<dyn std::error::Error + Send + Sync>;
 
@@ -66,13 +69,38 @@ pub fn assemble_result(
     }
 }
 
-/// Real engine backed by whisper.cpp via whisper-rs. The model is loaded
+/// Real engine backed by whisper.cpp via direct FFI. The model is loaded
 /// lazily on the first transcribe() call and reused for the whole batch.
 pub struct WhisperCppEngine {
     model: String,
     device: String,
     language: Option<String>,
-    ctx: Option<WhisperContext>,
+    ctx: Option<*mut ffi::WhisperContext>,
+}
+
+struct WhisperStateGuard(*mut ffi::WhisperState);
+
+impl Drop for WhisperStateGuard {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe { ffi::whisper_free_state(self.0) };
+        }
+    }
+}
+
+static INSTALL_LOGGING_HOOKS: Once = Once::new();
+
+fn install_logging_hooks() {
+    INSTALL_LOGGING_HOOKS.call_once(|| unsafe {
+        ffi::whisper_log_set(Some(silent_whisper_log), ptr::null_mut());
+    });
+}
+
+unsafe extern "C" fn silent_whisper_log(
+    _level: ffi::GgmlLogLevel,
+    _text: *const c_char,
+    _user_data: *mut c_void,
+) {
 }
 
 impl WhisperCppEngine {
@@ -85,21 +113,27 @@ impl WhisperCppEngine {
         }
     }
 
-    fn load_context(&mut self) -> Result<&WhisperContext, EngineError> {
+    fn load_context(&mut self) -> Result<*mut ffi::WhisperContext, EngineError> {
         if self.ctx.is_none() {
             // Route whisper.cpp/ggml logs into the (absent) log backend —
             // i.e. silence their chatty stderr output.
-            whisper_rs::install_logging_hooks();
+            install_logging_hooks();
             let model_path = crate::model::resolve_model(&self.model)?;
-            let mut params = WhisperContextParameters::default();
-            params.use_gpu(self.device != "cpu");
-            let ctx = WhisperContext::new_with_params(
-                model_path.to_str().ok_or("model path is not valid UTF-8")?,
-                params,
-            )?;
+            let params = ffi::WhisperContextParams {
+                use_gpu: self.device != "cpu",
+                ..ffi::WhisperContextParams::default()
+            };
+
+            let model_path =
+                CString::new(model_path.to_str().ok_or("model path is not valid UTF-8")?)?;
+            let ctx =
+                unsafe { ffi::whisper_init_from_file_with_params(model_path.as_ptr(), params) };
+            if ctx.is_null() {
+                return Err("failed to initialize whisper.cpp context".into());
+            }
             self.ctx = Some(ctx);
         }
-        Ok(self.ctx.as_ref().expect("just loaded"))
+        Ok(self.ctx.expect("just loaded"))
     }
 }
 
@@ -114,34 +148,69 @@ impl Transcriber for WhisperCppEngine {
         let language = self.language.clone();
 
         let ctx = self.load_context()?;
-        let mut state = ctx.create_state()?;
+        let state = unsafe { ffi::whisper_init_state(ctx) };
+        if state.is_null() {
+            return Err("failed to initialize whisper.cpp state".into());
+        }
+        let state = WhisperStateGuard(state);
 
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-        params.set_language(Some(language.as_deref().unwrap_or("auto")));
-        params.set_print_special(false);
-        params.set_print_progress(false);
-        params.set_print_realtime(false);
-        params.set_print_timestamps(false);
+        let mut params = ffi::WhisperFullParams::greedy();
+        params.greedy.best_of = 1;
+        let language = CString::new(language.as_deref().unwrap_or("auto"))?;
+        params.language = language.as_ptr();
+        params.print_special = false;
+        params.print_progress = false;
+        params.print_realtime = false;
+        params.print_timestamps = false;
 
-        state.full(params, &samples)?;
+        let n_samples = i32::try_from(samples.len()).map_err(|_| "audio file is too large")?;
+        let status = unsafe {
+            ffi::whisper_full_with_state(ctx, state.0, params, samples.as_ptr(), n_samples)
+        };
+        if status != 0 {
+            return Err(format!("whisper.cpp transcription failed with code {status}").into());
+        }
 
         let mut segments = Vec::new();
-        for segment in state.as_iter() {
+        let n_segments = unsafe { ffi::whisper_full_n_segments_from_state(state.0) };
+        for i in 0..n_segments {
             // Whisper timestamps are in centiseconds.
+            let text = unsafe {
+                let ptr = ffi::whisper_full_get_segment_text_from_state(state.0, i);
+                if ptr.is_null() {
+                    return Err("whisper.cpp returned a null segment text".into());
+                }
+                CStr::from_ptr(ptr).to_string_lossy().into_owned()
+            };
             segments.push(Segment {
-                start: segment.start_timestamp() as f64 / 100.0,
-                end: segment.end_timestamp() as f64 / 100.0,
-                text: segment.to_str_lossy()?.into_owned(),
+                start: unsafe { ffi::whisper_full_get_segment_t0_from_state(state.0, i) as f64 }
+                    / 100.0,
+                end: unsafe { ffi::whisper_full_get_segment_t1_from_state(state.0, i) as f64 }
+                    / 100.0,
+                text,
             });
         }
 
         let detected = match &self.language {
             Some(lang) => lang.clone(),
-            None => whisper_rs::get_lang_str(state.full_lang_id_from_state())
-                .unwrap_or("unknown")
-                .to_string(),
+            None => unsafe {
+                let lang = ffi::whisper_lang_str(ffi::whisper_full_lang_id_from_state(state.0));
+                if lang.is_null() {
+                    "unknown".to_string()
+                } else {
+                    CStr::from_ptr(lang).to_string_lossy().into_owned()
+                }
+            },
         };
 
         Ok(assemble_result(path, segments, detected, duration))
+    }
+}
+
+impl Drop for WhisperCppEngine {
+    fn drop(&mut self) {
+        if let Some(ctx) = self.ctx.take() {
+            unsafe { ffi::whisper_free(ctx) };
+        }
     }
 }

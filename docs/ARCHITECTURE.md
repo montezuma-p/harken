@@ -1,7 +1,7 @@
 # harken — architecture
 
-Rust crate, single binary. Transcription engine is whisper.cpp (via
-whisper-rs); all audio decoding happens in-process. Ported from a Python
+Rust crate, single binary. Transcription engine is whisper.cpp (via direct FFI
+bindings in this repo); all audio decoding happens in-process. Ported from a Python
 implementation (faster-whisper/CTranslate2) in v0.3.0; the Python test suite
 was carried over as the behavior spec (78 tests in `tests/`, all offline).
 
@@ -57,11 +57,23 @@ library so tests can drive it with a fake engine.
 segment, then joins segments with single spaces — this trimming is a spec'd
 contract (txt/srt/json output depends on it). `WhisperCppEngine` loads the
 whisper context lazily on the first `transcribe()` and reuses it for the whole
-batch (one model load per run, the crate's main perf property).
+batch (one model load per run, the crate's main perf property). It talks to
+whisper.cpp through the raw bindings in **`src/ffi.rs`** (manually mirrored from
+`vendor/whisper.cpp/include/whisper.h`), not through `whisper-rs`.
 `install_logging_hooks()` silences whisper.cpp/ggml's chatty stderr. Whisper
 timestamps arrive in centiseconds and are converted to seconds here.
 `--device` other than `cpu` just flips `use_gpu` — actual GPU support depends
-on whisper-rs build features (none enabled in v0.3.0).
+on how the vendored whisper.cpp subtree was compiled for that target.
+
+**`src/ffi.rs`** — minimal unsafe FFI surface for the subset of whisper.cpp's C
+API that `WhisperCppEngine` actually uses: context/state lifecycle, `whisper_full`,
+segment iteration, language lookup, and logging hooks. The bindings are kept
+manual on purpose so the repo controls the ABI it consumes.
+
+**`vendor/whisper.cpp/`** — git submodule pinned to whisper.cpp **v1.7.6**
+(`a8d002cfd879315632a579e73f0148d06959de36`). `build.rs` compiles the required
+ggml + CPU backend sources directly with `cc`, removing the `whisper-rs`
+maintenance layer while keeping version control fully inside this repo.
 
 **`src/audio.rs`** — decodes anything to whisper's input: 16 kHz mono f32.
 Non-obvious decision: `.opus` (WhatsApp voice notes, the hot path) is decoded
@@ -140,9 +152,11 @@ Behaviors the tests pin down and that are easy to break by accident:
 - **No VAD in v0.3.0.** The Python version (faster-whisper) ran Silero VAD
   before transcription; whisper.cpp does not, so long silences may transcribe
   slightly differently. Accepted trade-off for the single-binary pitch.
-- **GPU backends** (Metal/CUDA/Vulkan) are whisper-rs build features, not
-  enabled in released binaries — cargo-dist has no clean per-target feature
-  story. Metal on macOS is the first candidate; document as build-from-source
+- **Direct whisper.cpp vendoring** was chosen for total version control, to
+  remove the `whisper-rs` intermediary, and to keep the door open for local
+  patches such as revisiting Silero VAD integration later.
+- **GPU backends** (Metal/CUDA/Vulkan) are not wired into the release build
+  today. Metal on macOS is the first candidate; document as build-from-source
   until then.
 - **Published on crates.io** since v0.3.1 — `cargo install harken` /
   `cargo binstall harken` work. Note: the crate builds whisper.cpp and

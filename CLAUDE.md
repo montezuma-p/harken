@@ -1,6 +1,6 @@
 # CLAUDE.md — harken
 
-Local, offline audio transcription CLI (whisper.cpp via whisper-rs) with WhatsApp
+Local, offline audio transcription CLI (whisper.cpp via direct FFI + vendored sources) with WhatsApp
 chat-export support. Rust crate `harken` — full port from Python is done,
 the Python tree is gone. Architecture map: `docs/ARCHITECTURE.md`.
 

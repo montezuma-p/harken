@@ -49,6 +49,15 @@ cargo install harken --locked  # build from source (needs cmake + a C++ toolchai
 > opus tree declares an old CMake minimum; prepend
 > `CMAKE_POLICY_VERSION_MINIMUM=3.5` to the `cargo install` line.
 
+If you are building from a git checkout, initialize the vendored whisper.cpp
+submodule first:
+
+```bash
+git clone --recurse-submodules https://github.com/montezuma-p/harken
+# or, if you already cloned it:
+git submodule update --init --recursive
+```
+
 ## Use with Claude Code
 
 `harken` ships an [Agent Skill](.claude/skills/transcribe-audio/SKILL.md) that
@@ -165,7 +174,7 @@ network access.
 
 CPU is the safe default everywhere. Passing `--device` with anything other
 than `cpu` enables GPU offload when the binary was built with a GPU backend
-(Metal/CUDA/Vulkan — see the whisper-rs build features).
+(Metal/CUDA/Vulkan — via the vendored whisper.cpp build).
 
 ## Development
 

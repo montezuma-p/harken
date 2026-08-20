@@ -16,7 +16,7 @@ install-path = "CARGO_HOME"
 # Whether to install an updater program
 install-updater = false
 
-# Native ARM runner — whisper.cpp is C++ built via cmake, cross-compiling it
-# from x86_64 is not worth the pain
+# Native ARM runner — whisper.cpp is vendored C++ and cross-compiling that
+# stack from x86_64 is still not worth the pain
 [dist.github-custom-runners]
 aarch64-unknown-linux-gnu = "ubuntu-24.04-arm"

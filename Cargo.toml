@@ -21,11 +21,14 @@ glob = "0.3"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 ureq = "2"
 indicatif = "0.17"
-whisper-rs = "0.16.0"
 symphonia = { version = "0.6.1", features = ["mp3", "aac", "isomp4"] }
 ogg = "0.9.2"
 opus = "0.3.1"
 rubato = "5.0.0"
+
+[build-dependencies]
+# whisper.cpp is vendored as the git submodule at vendor/whisper.cpp (pinned to v1.7.6).
+cc = "1"
 
 [dev-dependencies]
 tempfile = "3"
