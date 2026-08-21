@@ -11,6 +11,9 @@ fn common_build(build: &mut cc::Build, whisper_dir: &Path, target: &str) {
         .include(whisper_dir.join("ggml/src"))
         .include(whisper_dir.join("ggml/src/ggml-cpu"))
         .define("GGML_USE_CPU", None)
+        // CMAKE_BUILD_TYPE=Release implies -DNDEBUG, which cc-rs does not add.
+        // Without it every assert() in ggml's operator loops stays compiled in.
+        .define("NDEBUG", None)
         .define("_XOPEN_SOURCE", Some("600"));
 
     if target.contains("linux") || target.contains("android") {
@@ -23,6 +26,58 @@ fn common_build(build: &mut cc::Build, whisper_dir: &Path, target: &str) {
 
     if target.contains("windows") {
         build.define("_CRT_SECURE_NO_WARNINGS", None);
+    }
+
+    arch_flags(build, target);
+}
+
+/// ggml's CPU kernels are selected at *compile* time: `arch/x86/quants.c` and
+/// `simd-mappings.h` gate on `__AVX2__`/`__F16C__`, so a build with no `-m`
+/// flags silently falls back to scalar code — same binary, several times the
+/// wall clock. whisper.cpp's CMake avoids that by defaulting to
+/// `-march=native`, which is right for a machine-local build and wrong for a
+/// distributed one (the release binary would inherit the CI runner's ISA).
+///
+/// So: a fixed, portable floor by default — AVX2/FMA/F16C, i.e. Haswell (2013)
+/// and newer, which is narrower than what `-march=native` on a CI runner
+/// produces — and `HARKEN_NATIVE=1` for anyone who wants their own CPU's full
+/// instruction set out of a source build.
+fn arch_flags(build: &mut cc::Build, target: &str) {
+    println!("cargo:rerun-if-env-changed=HARKEN_NATIVE");
+    let native = env::var("HARKEN_NATIVE").is_ok_and(|v| v != "0");
+
+    if native && !target.contains("msvc") {
+        // clang on arm64 wants -mcpu=native; -march=native is the x86 spelling
+        // and GCC rejects -mcpu there, so pick by target rather than probing.
+        if target.contains("aarch64") || target.contains("arm") {
+            build.flag_if_supported("-mcpu=native");
+        } else {
+            build.flag_if_supported("-march=native");
+        }
+        return;
+    }
+
+    if !(target.contains("x86_64") || target.contains("i686")) {
+        // aarch64/arm: NEON is baseline in armv8 and ggml uses it unconditionally.
+        return;
+    }
+
+    // Mirrors the ARCH_DEFINITIONS the ggml CMake sets alongside these flags,
+    // so ggml_cpu_has_avx2() and friends keep reporting the truth.
+    build
+        .define("GGML_AVX", None)
+        .define("GGML_AVX2", None)
+        .define("GGML_FMA", None)
+        .define("GGML_F16C", None);
+
+    if target.contains("msvc") {
+        build.flag("/arch:AVX2");
+    } else {
+        build
+            .flag_if_supported("-mavx")
+            .flag_if_supported("-mavx2")
+            .flag_if_supported("-mfma")
+            .flag_if_supported("-mf16c");
     }
 }
 

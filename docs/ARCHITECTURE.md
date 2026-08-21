@@ -75,6 +75,25 @@ manual on purpose so the repo controls the ABI it consumes.
 ggml + CPU backend sources directly with `cc`, removing the `whisper-rs`
 maintenance layer while keeping version control fully inside this repo.
 
+**`build.rs`** — two `cc` builds (C and C++) over the vendored sources. Two
+non-obvious flags carry almost all of the performance:
+
+- **ISA floor.** ggml picks its CPU kernels at *compile* time (`arch/x86/quants.c`
+  and `simd-mappings.h` gate on `__AVX2__`/`__F16C__`), so a build with no `-m`
+  flags silently produces scalar code. whisper.cpp's CMake dodges that with
+  `-march=native`, which is right for a machine-local build and wrong for a
+  distributed one. Here the default is a fixed floor — AVX2/FMA/F16C, Haswell
+  (2013) and newer, *narrower* than what `-march=native` on a CI runner emits —
+  and `HARKEN_NATIVE=1` opts a source build into the host's full ISA.
+- **`NDEBUG`.** `CMAKE_BUILD_TYPE=Release` implies it; `cc` does not add it. Without
+  it, every `assert()` in ggml's operator loops stays compiled in.
+
+Measured on an i5-7400, `small`, 60 s of audio, 5 interleaved pairs against a
+0.3.1 (whisper-rs/CMake) binary: **+1.7% at the minimum, +3.4% at the median**.
+The residual is the baseline's OpenMP (ggml's CMake defaults it on) plus the
+extras `-march=native` adds beyond the floor above. Transcription output is
+byte-identical.
+
 **`src/audio.rs`** — decodes anything to whisper's input: 16 kHz mono f32.
 Non-obvious decision: `.opus` (WhatsApp voice notes, the hot path) is decoded
 with libopus **natively at 16 kHz** — Opus supports 8/12/16/24/48 kHz decode

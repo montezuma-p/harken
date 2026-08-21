@@ -49,6 +49,10 @@ cargo install harken --locked  # build from source (needs cmake + a C++ toolchai
 > opus tree declares an old CMake minimum; prepend
 > `CMAKE_POLICY_VERSION_MINIMUM=3.5` to the `cargo install` line.
 
+Prebuilt binaries and default source builds target AVX2/FMA/F16C (Intel Haswell,
+AMD Excavator, or newer). Building for the machine you are on, and want its full
+instruction set? Prepend `HARKEN_NATIVE=1` to the `cargo install` line.
+
 If you are building from a git checkout, initialize the vendored whisper.cpp
 submodule first:
 
@@ -168,6 +172,12 @@ download excluded (reproduce with `make bench`):
 | `small-q5_1` | 3 min 13 s | 3.1x realtime | 628 MB |
 | `medium` | 9 min 54 s | 1.0x realtime | 2.0 GB |
 
+Table measured on v0.3.1. The v0.4.0 engine (in-repo FFI instead of
+`whisper-rs`) came out within 3% of it in a controlled A/B on the same machine —
+five interleaved pairs, `small` — so these numbers still describe the current
+build. Single-run figures drift more than that between sessions, which is why
+the comparison was done interleaved rather than by re-running the table.
+
 The chosen model is downloaded once, on first use, to
 `~/.cache/harken/models`. Subsequent runs reuse the cached model with no
 network access.
@@ -188,3 +198,7 @@ trait, and the suite runs against a fake, so it is instant and offline.
 ## License
 
 [MIT](LICENSE)
+
+Bundles [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (MIT) as the
+pinned submodule at `vendor/whisper.cpp`, compiled into the binary — see
+[its license](vendor/whisper.cpp/LICENSE).
