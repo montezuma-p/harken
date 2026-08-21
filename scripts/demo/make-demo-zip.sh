@@ -16,20 +16,25 @@ trap 'rm -rf "$WORK"' EXIT
 tts() { # tts <text> <out.wav>
     if command -v piper >/dev/null && [[ -n "${PIPER_VOICE:-}" ]]; then
         # slightly slower speech transcribes more cleanly
-        echo "$1" | piper -m "$PIPER_VOICE" -f "$2" --length-scale 1.15 >/dev/null 2>&1
+        echo "$1" | piper -m "$PIPER_VOICE" -f "$2" --length-scale 1.3 >/dev/null 2>&1
     else
         espeak-ng -v pt-br -s 150 -w "$2" "$1"
     fi
 }
 
+# A coworker explaining one task in five voice notes — the scenario the README
+# pitch describes. Note 3 corrects note 1: in audio you only find that out at
+# the end, which is the whole point of having the text.
 NOTES=(
-    "Olá! Vamos fazer aquele churrasco no sábado? Eu levo a carne e as bebidas."
-    "Fechou! Manda o endereço aí. Acho que é perto da estação, né?"
-    "Isso, é bem perto. Pode chegar às sete, e traz o violão pra gente tocar depois."
+    "Preciso que você mexa no relatório de fechamento do mês."
+    "O problema é que o total de horas sai duplicado quando a semana cai virando o mês."
+    "Corrigindo o que eu falei: o erro não está na tela. É a função que junta os turnos."
+    "A prioridade é média, mas não pode passar de sexta. O financeiro fecha no sábado."
+    "Faz um teste para o mês de fevereiro. Foi lá que o erro apareceu primeiro."
 )
 
 # Attachment numbers are chronological; 00000003 is the (absent) photo.
-ATTACH_NUMS=(1 2 4)
+ATTACH_NUMS=(1 2 4 5 6)
 
 for i in "${!NOTES[@]}"; do
     tts "${NOTES[$i]}" "$WORK/note$i.wav"
@@ -41,13 +46,15 @@ done
 
 # iOS export format: [DD/MM/YYYY, HH:MM:SS] Sender: body
 cat > "$WORK/_chat.txt" <<'EOF'
-[10/08/2026, 18:02:10] Ana: As mensagens e as chamadas são protegidas com a criptografia de ponta a ponta.
-[10/08/2026, 18:02:31] Ana: Bruno, te mandei um áudio 👇
-[10/08/2026, 18:02:58] Ana: <anexado: 00000001-AUDIO.opus>
-[10/08/2026, 18:05:12] Bruno: <anexado: 00000002-AUDIO.opus>
-[10/08/2026, 18:06:40] Ana: <anexado: 00000003-PHOTO.jpg>
-[10/08/2026, 18:07:05] Ana: <anexado: 00000004-AUDIO.opus>
-[10/08/2026, 18:08:22] Bruno: Show, até sábado!
+[10/08/2026, 09:12:10] Ana: As mensagens e as chamadas são protegidas com a criptografia de ponta a ponta.
+[10/08/2026, 09:12:31] Ana: Bruno, te explico a task por áudio 👇
+[10/08/2026, 09:12:58] Ana: <anexado: 00000001-AUDIO.opus>
+[10/08/2026, 09:14:10] Ana: <anexado: 00000002-AUDIO.opus>
+[10/08/2026, 09:15:02] Ana: <anexado: 00000003-PHOTO.jpg>
+[10/08/2026, 09:16:44] Ana: <anexado: 00000004-AUDIO.opus>
+[10/08/2026, 09:18:09] Ana: <anexado: 00000005-AUDIO.opus>
+[10/08/2026, 09:19:35] Ana: <anexado: 00000006-AUDIO.opus>
+[10/08/2026, 09:20:02] Bruno: Fechou, vou olhar hoje.
 EOF
 
 rm -f "$OUT_ZIP"

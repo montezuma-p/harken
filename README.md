@@ -5,24 +5,37 @@
 [![CI](https://github.com/montezuma-p/harken/actions/workflows/ci.yml/badge.svg)](https://github.com/montezuma-p/harken/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-![harken transcribing the voice notes in a WhatsApp chat export, fully offline](https://raw.githubusercontent.com/montezuma-p/harken/main/docs/assets/demo.gif)
+![Claude Code reading a coworker's WhatsApp voice notes through harken and answering with the task, fully offline](https://raw.githubusercontent.com/montezuma-p/harken/main/docs/assets/demo-claude.gif)
+
+*Five Portuguese voice notes explaining one task — transcribed on CPU, read by
+the agent, and answered in five bullets. Nothing left the machine.*
 
 A single static binary powered by [whisper.cpp](https://github.com/ggml-org/whisper.cpp).
 No Python, no ffmpeg, no runtime dependencies — audio decoding (opus, mp3,
 m4a, wav, flac, …) happens in-process.
 
-## Why
+## What it solves
 
-Voice notes, meeting recordings, and WhatsApp PTT audio often contain
-sensitive content. `harken` transcribes everything on your own machine:
-no audio, and no transcript, ever leaves the device. There is no API key,
-no upload step, no cloud dependency.
+A coworker explains one task in five voice notes of 1–2 minutes each. That is
+ten minutes you have to sit through in order — and at the end you still cannot
+search it, quote it, or paste the one sentence that mattered into a ticket.
 
-- Runs on CPU by default — no GPU required.
-- The model loads once per run and is reused for every file in a batch.
-- Two modes: transcribe loose audio files (or whole folders), or point it
-  straight at a WhatsApp chat-export `.zip` and let it pull out only the
-  voice notes.
+One 30-second note? Just listen to it. `harken` is for the rest:
+
+- **Volume.** Five notes in a row, a folder of meeting recordings, a whole
+  WhatsApp chat export — one command, one model load, one folder of text. The
+  model loads once per run and is reused for every file in the batch.
+- **Text is random-access.** Grep it, skim it, quote it, diff it. Audio at 2x
+  is still serial — you cannot ctrl-F a voice note.
+- **Agents cannot listen.** You cannot hand an `.opus` to Claude. That is why
+  harken ships an [Agent Skill](#use-with-claude-code): the agent transcribes
+  the notes locally, reads them, and picks up the task context on its own —
+  including the correction buried halfway through the notes.
+
+Voice notes, meeting recordings, and WhatsApp PTT audio are also often
+sensitive, so none of the above costs you privacy. Everything runs on your own
+machine: no audio and no transcript ever leaves the device, no API key, no
+upload step, no cloud dependency, CPU by default — no GPU required.
 
 ## Install
 
@@ -79,6 +92,8 @@ project-scoped skill in `.claude/skills/` is picked up automatically, or
 copy/symlink `.claude/skills/transcribe-audio/` into `~/.claude/skills/`.)
 
 ## Usage
+
+![harken transcribing the voice notes of a WhatsApp chat export from the command line](https://raw.githubusercontent.com/montezuma-p/harken/main/docs/assets/demo-cli.gif)
 
 ### Batch mode — files, folders, or globs
 
