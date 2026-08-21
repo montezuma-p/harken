@@ -5,6 +5,7 @@ pub mod audio;
 pub mod batch;
 pub mod cli;
 pub mod engine;
+mod ffi;
 pub mod model;
 pub mod whatsapp;
 pub mod writers;

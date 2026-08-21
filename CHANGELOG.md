@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.4.0 — 2026-08-20
+
+- Transcription now goes through FFI bindings kept in this repo (`src/ffi.rs`)
+  against a vendored whisper.cpp pinned to **v1.7.6** (`vendor/whisper.cpp`
+  submodule). `whisper-rs` is gone. Output is byte-identical to v0.3.1 on the
+  same audio.
+- Source builds no longer need **libclang**: `bindgen` left the build graph, and
+  whisper.cpp no longer goes through CMake. The `CMAKE_POLICY_VERSION_MINIMUM`
+  note now applies only to opus, on hosts without a system libopus.
+- The build targets an explicit **AVX2/FMA/F16C floor** (Haswell 2013 and newer)
+  instead of inheriting the build machine's instruction set, so released
+  binaries stop depending on whatever CPU the CI runner had. `HARKEN_NATIVE=1`
+  opts a source build into the host's full ISA. Measured within 3% of the v0.3.1
+  engine on the same machine (five interleaved A/B pairs).
+- New opt-in smoke test that loads a real whisper context through the FFI:
+  `cargo test --test ffi_smoke_test -- --ignored`. The 78-test suite runs
+  against a fake engine and cannot catch an FFI mistake.
+- Building from a git checkout now needs `--recurse-submodules` (or
+  `git submodule update --init --recursive`).
+- The published package ships only the vendored sources the build compiles —
+  upstream's examples, bindings and tests are excluded (1.3 MiB crate).
+
 ## v0.3.1 — 2026-08-20
 
 - First release published on crates.io: `cargo install harken` and

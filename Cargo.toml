@@ -1,12 +1,33 @@
 [package]
 name = "harken"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 license = "MIT"
 description = "Local, offline audio transcription CLI (whisper.cpp) with WhatsApp chat-export support"
 repository = "https://github.com/montezuma-p/harken"
 homepage = "https://github.com/montezuma-p/harken"
-exclude = ["hub/", ".playwright-mcp/", "transcripts/", ".claude/", ".claude-plugin/", ".github/", "docs/assets/", "scripts/"]
+exclude = [
+    "hub/",
+    ".playwright-mcp/",
+    "transcripts/",
+    ".claude/",
+    ".claude-plugin/",
+    ".github/",
+    "docs/assets/",
+    "scripts/",
+    # Vendored whisper.cpp: the package ships only what build.rs compiles
+    # (src/, include/, ggml/) plus upstream's LICENSE. The rest is dead weight
+    # for `cargo install` and docs.rs, which build from the .crate alone.
+    "vendor/whisper.cpp/examples/",
+    "vendor/whisper.cpp/bindings/",
+    "vendor/whisper.cpp/tests/",
+    "vendor/whisper.cpp/models/",
+    "vendor/whisper.cpp/samples/",
+    "vendor/whisper.cpp/grammars/",
+    "vendor/whisper.cpp/scripts/",
+    "vendor/whisper.cpp/.devops/",
+    "vendor/whisper.cpp/ci/",
+]
 readme = "README.md"
 keywords = ["whisper", "transcription", "audio", "whatsapp", "speech-to-text"]
 categories = ["command-line-utilities", "multimedia::audio"]
@@ -21,11 +42,14 @@ glob = "0.3"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 ureq = "2"
 indicatif = "0.17"
-whisper-rs = "0.16.0"
 symphonia = { version = "0.6.1", features = ["mp3", "aac", "isomp4"] }
 ogg = "0.9.2"
 opus = "0.3.1"
 rubato = "5.0.0"
+
+[build-dependencies]
+# whisper.cpp is vendored as the git submodule at vendor/whisper.cpp (pinned to v1.7.6).
+cc = "1"
 
 [dev-dependencies]
 tempfile = "3"

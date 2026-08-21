@@ -1,6 +1,6 @@
 # CLAUDE.md — harken
 
-Local, offline audio transcription CLI (whisper.cpp via whisper-rs) with WhatsApp
+Local, offline audio transcription CLI (whisper.cpp via direct FFI + vendored sources) with WhatsApp
 chat-export support. Rust crate `harken` — full port from Python is done,
 the Python tree is gone. Architecture map: `docs/ARCHITECTURE.md`.
 
@@ -11,7 +11,14 @@ notes, roadmap, ADRs — never commit it).
 
 - `make check` — full local CI: `fmt` + `clippy -D warnings` + `test` + `cargo audit` + `cargo machete`. Run before claiming anything done.
 - `cargo test` — 78 integration tests, instant and offline.
-- `cargo build` — needs cmake + a C++ toolchain (whisper.cpp is compiled in).
+- `cargo test --test ffi_smoke_test -- --ignored` — opt-in smoke test that loads
+  a real whisper context through `src/ffi.rs` (skips if `ggml-tiny.bin` is not
+  already cached; never runs in CI). Run it after touching `src/ffi.rs`,
+  `build.rs`, or the submodule pin — the 78 tests above use `FakeEngine` and
+  cannot catch an FFI mistake.
+- `cargo build` — needs a C++ toolchain (whisper.cpp is compiled in) and the
+  `vendor/whisper.cpp` submodule checked out (`git submodule update --init
+  --recursive`); `build.rs` panics with that hint if it is missing.
 - `dist plan` / `dist build` — cargo-dist release artifacts.
 - `make install-dev-tools` — installs cargo-audit + cargo-machete.
 
@@ -29,9 +36,18 @@ notes, roadmap, ADRs — never commit it).
 
 ## Build gotchas
 
-- `.cargo/config.toml` sets `CMAKE_POLICY_VERSION_MINIMUM=3.5` — the opus tree
-  vendored by `audiopus_sys` declares a cmake minimum that CMake 4 (GitHub
-  macOS runners) rejects. Do not remove.
+- **`vendor/whisper.cpp` is a git submodule pinned to a tag** (v1.7.6). A plain
+  `git clone` does not populate it; `build.rs` compiles those sources directly
+  with `cc`, so whisper.cpp never goes through CMake. `src/ffi.rs` mirrors
+  `vendor/whisper.cpp/include/whisper.h` by hand — bumping the submodule means
+  re-checking that header field by field.
+- **Never remove the arch flags or `NDEBUG` from `build.rs`.** ggml selects its
+  CPU kernels at compile time; without `-mavx2 -mfma -mf16c` the binary runs
+  scalar code (measurable as `vcvtph2ps` dropping to zero in `objdump`) and
+  without `NDEBUG` ggml's operator asserts stay in. See `docs/ARCHITECTURE.md`.
+- `.cargo/config.toml` sets `CMAKE_POLICY_VERSION_MINIMUM=3.5` — this is now
+  only about **opus**: the tree vendored by `audiopus_sys` declares a cmake
+  minimum that CMake 4 (GitHub macOS runners) rejects. Do not remove.
 - libopus: locally it links dynamically via pkg-config (`opus-devel` on
   Fedora); on CI runners with no libopus-dev, the vendored copy is embedded
   statically. Different on purpose — a release Linux binary must NOT list
