@@ -1,6 +1,6 @@
 [package]
 name = "harken"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 license = "MIT"
 description = "Local, offline audio transcription CLI (whisper.cpp) with WhatsApp chat-export support"

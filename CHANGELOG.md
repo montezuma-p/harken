@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.4.0 — 2026-08-20
+## v0.4.1 — 2026-08-20
 
 - Transcription now goes through FFI bindings kept in this repo (`src/ffi.rs`)
   against a vendored whisper.cpp pinned to **v1.7.6** (`vendor/whisper.cpp`
@@ -21,6 +21,9 @@
   `git submodule update --init --recursive`).
 - The published package ships only the vendored sources the build compiles —
   upstream's examples, bindings and tests are excluded (1.3 MiB crate).
+- (`v0.4.0` was tagged but never released: MSVC spells the C++ standard option
+  `/std:c++17` and silently ignored the unix spelling, so the Windows build
+  compiled as C++14 and failed on `std::filesystem`.)
 
 ## v0.3.1 — 2026-08-20
 
