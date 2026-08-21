@@ -64,30 +64,39 @@ fn strip_invisible(line: &str) -> String {
         .collect()
 }
 
-fn parse_date(date_str: &str, day_first: bool) -> NaiveDate {
+/// Read a header date under the given ordering. `None` when the string is not
+/// a real date: the header regexes validate shape, not the calendar, and
+/// `parse_chat` consumes untrusted export content. `\d` in the `regex` crate is
+/// Unicode (`\p{Nd}`) while `str::parse` is ASCII-only, so a non-ASCII digit
+/// lands here too.
+fn parse_date(date_str: &str, day_first: bool) -> Option<NaiveDate> {
     let parts: Vec<i64> = date_str
         .split('/')
-        .map(|p| p.parse().expect("numeric date component"))
-        .collect();
+        .map(|p| p.parse().ok())
+        .collect::<Option<_>>()?;
     let (a, b, mut year) = (parts[0], parts[1], parts[2]);
     if year < 100 {
         year += 2000;
     }
     let (day, month) = if day_first { (a, b) } else { (b, a) };
     NaiveDate::from_ymd_opt(year as i32, month as u32, day as u32)
-        .expect("invalid date in chat header")
 }
 
 /// Decide the date order of an Android chat from its whole corpus of
 /// header dates: any first component > 12 proves day-first, any second
 /// component > 12 proves month-first. Fully ambiguous chats default to
 /// day-first (harken is pt-centric).
+///
+/// Dates that are impossible read either way (`31/02`, `13/13`) carry no
+/// ordering evidence, so they stay out of the corpus. Leaving them in would let
+/// one malformed line flip the ordering of every valid message in the chat.
 fn infer_day_first(date_strs: &[&str]) -> bool {
     let components: Vec<(u32, u32)> = date_strs
         .iter()
-        .map(|ds| {
-            let mut it = ds.split('/').map(|p| p.parse::<u32>().unwrap());
-            (it.next().unwrap(), it.next().unwrap())
+        .filter(|ds| parse_date(ds, true).is_some() || parse_date(ds, false).is_some())
+        .filter_map(|ds| {
+            let mut it = ds.split('/').filter_map(|p| p.parse::<u32>().ok());
+            Some((it.next()?, it.next()?))
         })
         .collect();
     if components.iter().any(|(a, _)| *a > 12) {
@@ -140,14 +149,19 @@ pub fn parse_chat(text: &str) -> Vec<Message> {
 
     let mut messages: Vec<Message> = Vec::new();
     for (i, line) in lines.iter().enumerate() {
-        if let Some(caps) = pattern.captures(line) {
-            messages.push(Message {
-                date: parse_date(caps.get(1).unwrap().as_str(), day_first),
+        // A header whose date is not a real date is not a header: it falls
+        // through to the continuation branch like any other non-matching line.
+        let header = pattern.captures(line).and_then(|caps| {
+            Some(Message {
+                date: parse_date(caps.get(1).unwrap().as_str(), day_first)?,
                 time: caps.get(2).unwrap().as_str().to_string(),
                 sender: caps.get(3).unwrap().as_str().to_string(),
                 body: caps.get(4).unwrap().as_str().to_string(),
                 line_index: i,
-            });
+            })
+        });
+        if let Some(message) = header {
+            messages.push(message);
         } else if let Some(last) = messages.last_mut() {
             last.body.push('\n');
             last.body.push_str(raw_lines[i]);
@@ -383,17 +397,31 @@ pub fn run(args: &WhatsappArgs, transcriber: &mut dyn Transcriber) -> i32 {
         }
     };
 
-    // No output directory is created until the chat entry is located --
-    // a zip that fails to locate one exits 2 without leaving an empty
+    // Reading the chat entry can still fail on a zip whose central directory
+    // parsed fine -- a member compressed with a method this build does not
+    // carry (only "deflate" is enabled) errors here. That is an input error,
+    // like the two above, not a panic.
+    let raw_bytes = {
+        let mut member = match archive.by_name(&chat_name) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return 2;
+            }
+        };
+        let mut buf = Vec::new();
+        if let Err(e) = member.read_to_end(&mut buf) {
+            eprintln!("error: {e}");
+            return 2;
+        }
+        buf
+    };
+
+    // No output directory is created until the chat log has actually been
+    // read -- a zip that fails to yield one exits 2 without leaving an empty
     // <out>/audio/ behind.
     std::fs::create_dir_all(&audio_dir).expect("failed to create audio directory");
 
-    let raw_bytes = {
-        let mut member = archive.by_name(&chat_name).expect("chat entry readable");
-        let mut buf = Vec::new();
-        member.read_to_end(&mut buf).expect("chat entry readable");
-        buf
-    };
     // Decode as utf-8-sig: strip a leading BOM if present.
     let raw_bytes = raw_bytes
         .strip_prefix(b"\xef\xbb\xbf".as_slice())
@@ -416,9 +444,16 @@ pub fn run(args: &WhatsappArgs, transcriber: &mut dyn Transcriber) -> i32 {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         let dest = audio_dir.join(name);
-        let mut member = archive.by_name(&member_name).expect("member readable");
+        // An unreadable attachment is one unusable file, not a broken run --
+        // same treatment as one referenced but absent from the zip, above.
         let mut buf = Vec::new();
-        member.read_to_end(&mut buf).expect("member readable");
+        let read = archive
+            .by_name(&member_name)
+            .and_then(|mut member| member.read_to_end(&mut buf).map_err(Into::into));
+        if let Err(e) = read {
+            eprintln!("warning: could not read attachment from zip: {filename}: {e}");
+            continue;
+        }
         std::fs::write(&dest, buf).expect("failed to extract attachment");
         extracted.push(dest);
     }

@@ -10,11 +10,11 @@ notes, roadmap, ADRs — never commit it).
 ## Commands
 
 - `make check` — full local CI: `fmt` + `clippy -D warnings` + `test` + `cargo audit` + `cargo machete`. Run before claiming anything done.
-- `cargo test` — 78 integration tests, instant and offline.
+- `cargo test` — 88 integration tests, instant and offline.
 - `cargo test --test ffi_smoke_test -- --ignored` — opt-in smoke test that loads
   a real whisper context through `src/ffi.rs` (skips if `ggml-tiny.bin` is not
   already cached; never runs in CI). Run it after touching `src/ffi.rs`,
-  `build.rs`, or the submodule pin — the 78 tests above use `FakeEngine` and
+  `build.rs`, or the submodule pin — the 88 tests above use `FakeEngine` and
   cannot catch an FFI mistake.
 - `cargo build` — needs a C++ toolchain (whisper.cpp is compiled in) and the
   `vendor/whisper.cpp` submodule checked out (`git submodule update --init
@@ -24,7 +24,7 @@ notes, roadmap, ADRs — never commit it).
 
 ## Inviolable rules
 
-- **The 78 tests in `tests/` are the behavior SPEC**, ported from the Python
+- **The 88 tests in `tests/` are the behavior SPEC**, ported from the Python
   suite (81 tests). A behavior change requires consciously changing the
   corresponding test — never "fix" a test to make code pass.
 - **stdout stays clean.** All progress, logs, and summaries go to stderr.

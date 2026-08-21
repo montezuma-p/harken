@@ -1,4 +1,4 @@
-//! Output writers for transcription results: txt, json, srt, and manifest.
+//! Output writers for transcription results: txt, json, srt, md, and manifest.
 
 use std::fs::OpenOptions;
 use std::io::{self, Write};
@@ -13,6 +13,7 @@ pub enum OutputFormat {
     Txt,
     Json,
     Srt,
+    Md,
 }
 
 impl OutputFormat {
@@ -21,6 +22,7 @@ impl OutputFormat {
             OutputFormat::Txt => "txt",
             OutputFormat::Json => "json",
             OutputFormat::Srt => "srt",
+            OutputFormat::Md => "md",
         }
     }
 }
@@ -34,6 +36,7 @@ pub fn write_output(
         OutputFormat::Txt => write_txt(result, dest),
         OutputFormat::Json => write_json(result, dest),
         OutputFormat::Srt => write_srt(result, dest),
+        OutputFormat::Md => write_md(result, dest),
     }
 }
 
@@ -77,12 +80,24 @@ pub fn write_json(result: &TranscriptionResult, dest: &Path) -> io::Result<()> {
     std::fs::write(dest, format!("{json}\n"))
 }
 
-fn srt_timestamp(seconds: f64) -> String {
+/// Split a timestamp into (hours, minutes, seconds, milliseconds), rounding to
+/// the nearest millisecond first so both timestamp formats agree on the split.
+fn hms_millis(seconds: f64) -> (i64, i64, i64, i64) {
     let total_ms = (seconds * 1000.0).round() as i64;
     let (hours, rem_ms) = (total_ms / 3_600_000, total_ms % 3_600_000);
     let (minutes, rem_ms) = (rem_ms / 60_000, rem_ms % 60_000);
     let (secs, millis) = (rem_ms / 1000, rem_ms % 1000);
+    (hours, minutes, secs, millis)
+}
+
+fn srt_timestamp(seconds: f64) -> String {
+    let (hours, minutes, secs, millis) = hms_millis(seconds);
     format!("{hours:02}:{minutes:02}:{secs:02},{millis:03}")
+}
+
+fn md_timestamp(seconds: f64) -> String {
+    let (hours, minutes, secs, _) = hms_millis(seconds);
+    format!("{hours:02}:{minutes:02}:{secs:02}")
 }
 
 pub fn write_srt(result: &TranscriptionResult, dest: &Path) -> io::Result<()> {
@@ -93,6 +108,27 @@ pub fn write_srt(result: &TranscriptionResult, dest: &Path) -> io::Result<()> {
         out.push_str(&format!(
             "{}\n{start} --> {end}\n{}\n\n",
             i + 1,
+            segment.text
+        ));
+    }
+    std::fs::write(dest, out)
+}
+
+/// A transcript meant to be read: the source stem as the title, then one line
+/// per segment, each prefixed with its start time. Segment text is emitted
+/// verbatim -- the `[hh:mm:ss] ` prefix means no segment can open a markdown
+/// block, so there is nothing to escape.
+pub fn write_md(result: &TranscriptionResult, dest: &Path) -> io::Result<()> {
+    let title = result
+        .source
+        .file_stem()
+        .map(|s| s.to_string_lossy())
+        .unwrap_or_default();
+    let mut out = format!("# {title}\n\n");
+    for segment in &result.segments {
+        out.push_str(&format!(
+            "[{}] {}\n",
+            md_timestamp(segment.start),
             segment.text
         ));
     }

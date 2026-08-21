@@ -270,6 +270,77 @@ fn test_parse_chat_android_ambiguous_dates_default_day_first() {
     assert_eq!(messages[0].date, d(2026, 7, 5));
 }
 
+// --- parse_chat: headers whose date is shape-valid but not a real date ------
+//
+// The header regexes validate shape, not the calendar. parse_chat is pub and
+// consumes untrusted zip content, so a bad date must not panic: a header whose
+// date is not a real date is not a header, and falls through to the
+// continuation branch like any other non-matching line.
+
+#[test]
+fn test_parse_chat_ios_calendar_invalid_date_is_a_continuation() {
+    let text = "[10/07/2026, 21:04:00] Bob: oi\n[99/99/2026, 21:05:00] Bob: nao sou header";
+
+    let messages = parse_chat(text);
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].date, d(2026, 7, 10));
+    assert_eq!(
+        messages[0].body,
+        "oi\n[99/99/2026, 21:05:00] Bob: nao sou header"
+    );
+}
+
+#[test]
+fn test_parse_chat_android_calendar_invalid_date_is_a_continuation() {
+    // 31 of February: shape-valid for the regex, not a date on any calendar.
+    let text = "10/07/2026, 21:04 - Bob: oi\n31/02/2026, 21:05 - Bob: nao sou header";
+
+    let messages = parse_chat(text);
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].date, d(2026, 7, 10));
+    assert_eq!(
+        messages[0].body,
+        "oi\n31/02/2026, 21:05 - Bob: nao sou header"
+    );
+}
+
+#[test]
+fn test_parse_chat_android_impossible_date_does_not_poison_day_first_inference() {
+    // 31/02 is invalid read either way, so it carries no ordering evidence and
+    // stays out of the inference set. The 7/13 header is the only real signal:
+    // the chat is month-first, and must not be flipped to day-first by the 31.
+    let text = "7/10/26, 9:04 PM - Bob: hi\n\
+                31/02/26, 9:05 PM - Bob: not a header\n\
+                7/13/26, 9:06 PM - Bob: all good";
+
+    let messages = parse_chat(text);
+
+    let dates: Vec<NaiveDate> = messages.iter().map(|m| m.date).collect();
+    assert_eq!(dates, vec![d(2026, 7, 10), d(2026, 7, 13)]);
+}
+
+#[test]
+fn test_parse_chat_android_non_ascii_digits_date_is_a_continuation() {
+    // The regex crate's \d is Unicode (\p{Nd}), but str::parse is ASCII-only.
+    let text = "10/07/2026, 21:04 - Bob: oi\n\u{664}\u{661}/\u{660}\u{661}/2026, 21:05 - Bob: x";
+
+    let messages = parse_chat(text);
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].date, d(2026, 7, 10));
+}
+
+#[test]
+fn test_parse_chat_only_header_is_calendar_invalid_yields_no_messages() {
+    // The inference set ends up empty, the single header falls through to the
+    // continuation branch with no previous message, and is dropped.
+    let text = "31/02/2026, 21:05 - Bob: oi";
+
+    assert!(parse_chat(text).is_empty());
+}
+
 #[test]
 fn test_parse_chat_android_joins_continuation_lines() {
     let text = "11/07/2026, 10:00 - Bob: primeira parte\nsegunda parte (continuacao)";
@@ -826,6 +897,88 @@ fn test_run_corrupt_zip_returns_2() {
     let exit_code = run(&args, &mut NameTranscriber);
 
     assert_eq!(exit_code, 2);
+}
+
+/// A minimal one-entry zip whose headers parse cleanly -- so the entry is
+/// listed and the chat log is located -- but whose deflate stream is garbage,
+/// so reading the member fails. Hand-assembled, because the `zip` writer only
+/// emits well-formed streams.
+fn write_zip_with_corrupt_member(zip_path: &Path, name: &str) {
+    const METHOD_DEFLATE: u16 = 8;
+    const DOS_EPOCH_DATE: u16 = 0x21; // 1980-01-01
+    let data: &[u8] = b"\xff\xff\xff\xff not a deflate stream";
+    let name_bytes = name.as_bytes();
+    let size = data.len() as u32;
+    let name_len = name_bytes.len() as u16;
+
+    let mut out: Vec<u8> = Vec::new();
+
+    // Local file header.
+    out.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
+    out.extend_from_slice(&20u16.to_le_bytes()); // version needed
+    out.extend_from_slice(&0u16.to_le_bytes()); // flags
+    out.extend_from_slice(&METHOD_DEFLATE.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes()); // mod time
+    out.extend_from_slice(&DOS_EPOCH_DATE.to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes()); // crc32
+    out.extend_from_slice(&size.to_le_bytes()); // compressed size
+    out.extend_from_slice(&size.to_le_bytes()); // uncompressed size
+    out.extend_from_slice(&name_len.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes()); // extra field len
+    out.extend_from_slice(name_bytes);
+    out.extend_from_slice(data);
+
+    let cd_offset = out.len() as u32;
+
+    // Central directory header.
+    out.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
+    out.extend_from_slice(&20u16.to_le_bytes()); // version made by
+    out.extend_from_slice(&20u16.to_le_bytes()); // version needed
+    out.extend_from_slice(&0u16.to_le_bytes()); // flags
+    out.extend_from_slice(&METHOD_DEFLATE.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes()); // mod time
+    out.extend_from_slice(&DOS_EPOCH_DATE.to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes()); // crc32
+    out.extend_from_slice(&size.to_le_bytes()); // compressed size
+    out.extend_from_slice(&size.to_le_bytes()); // uncompressed size
+    out.extend_from_slice(&name_len.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes()); // extra field len
+    out.extend_from_slice(&0u16.to_le_bytes()); // comment len
+    out.extend_from_slice(&0u16.to_le_bytes()); // disk number start
+    out.extend_from_slice(&0u16.to_le_bytes()); // internal attrs
+    out.extend_from_slice(&0u32.to_le_bytes()); // external attrs
+    out.extend_from_slice(&0u32.to_le_bytes()); // local header offset
+    out.extend_from_slice(name_bytes);
+
+    let cd_size = out.len() as u32 - cd_offset;
+
+    // End of central directory.
+    out.extend_from_slice(&0x0605_4b50u32.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes()); // disk number
+    out.extend_from_slice(&0u16.to_le_bytes()); // disk with cd start
+    out.extend_from_slice(&1u16.to_le_bytes()); // entries on this disk
+    out.extend_from_slice(&1u16.to_le_bytes()); // entries total
+    out.extend_from_slice(&cd_size.to_le_bytes());
+    out.extend_from_slice(&cd_offset.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes()); // comment len
+
+    std::fs::write(zip_path, out).expect("write zip");
+}
+
+#[test]
+fn test_run_unreadable_chat_entry_returns_2() {
+    // The chat entry is listed and located, and only then does reading it
+    // fail. That is an input error like a corrupt zip, not a panic.
+    let tmp = tempfile::tempdir().unwrap();
+    let zip_path = tmp.path().join("chat_export.zip");
+    write_zip_with_corrupt_member(&zip_path, "_chat.txt");
+    let out_dir = tmp.path().join("out");
+
+    let args = wa_args(&zip_path, Some(&out_dir), None, None, false);
+    let exit_code = run(&args, &mut NameTranscriber);
+
+    assert_eq!(exit_code, 2);
+    assert!(!out_dir.exists());
 }
 
 #[test]

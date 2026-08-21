@@ -53,6 +53,13 @@ fn parser_accepts_multiple_inputs_and_flags() {
 }
 
 #[test]
+fn parser_accepts_md_format() {
+    let cli = Cli::try_parse_from(["harken", "a.wav", "--format", "md"]).unwrap();
+
+    assert_eq!(cli.batch.format, OutputFormat::Md);
+}
+
+#[test]
 fn parser_rejects_bad_format() {
     let result = Cli::try_parse_from(["harken", "a.wav", "--format", "mp3"]);
 

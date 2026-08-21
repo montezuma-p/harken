@@ -1,6 +1,6 @@
 # harken
 
-**Local audio transcription for Claude Code and any agent — batch, fully offline, no API key.**
+**Transcribe a WhatsApp chat export — or any audio — fully offline. One 13 MB binary: no Python, no ffmpeg, no API key.**
 
 [![CI](https://github.com/montezuma-p/harken/actions/workflows/ci.yml/badge.svg)](https://github.com/montezuma-p/harken/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -98,7 +98,7 @@ harken recording.wav --model medium --lang auto
 
 Flags: `--out DIR` (default `./transcripts`), `--model` (default `small`),
 `--lang` (default `pt`; `--lang auto` to auto-detect), `--format`
-(`txt`/`json`/`srt`, default `txt`), `--device` (default `cpu`), `--force`
+(`txt`/`json`/`srt`/`md`, default `txt`), `--device` (default `cpu`), `--force`
 (re-transcribe even if the output file already exists).
 
 Every file gets `<out>/<stem>.<format>`; a running `manifest.jsonl` records

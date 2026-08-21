@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use harken::engine::{Segment, TranscriptionResult};
-use harken::writers::{append_manifest, write_json, write_srt, write_txt};
+use harken::writers::{append_manifest, write_json, write_md, write_srt, write_txt};
 use serde_json::{json, Value};
 
 /// Python fixture `sample_result`.
@@ -112,6 +112,64 @@ fn write_srt_formats_hour_and_millisecond_boundaries() {
         std::fs::read_to_string(&dest).unwrap(),
         "1\n01:01:01,234 --> 01:01:02,000\nlate segment\n\n"
     );
+}
+
+/// New in the Rust port: `--format md`, a reading transcript with per-segment
+/// timestamps. Byte-exact, like txt and srt.
+#[test]
+fn write_md_titles_by_stem_and_prefixes_each_segment_with_a_timestamp() {
+    let dir = tempfile::tempdir().unwrap();
+    let result = sample_result(dir.path());
+    let dest = dir.path().join("note.md");
+
+    write_md(&result, &dest).unwrap();
+
+    let expected = "# note\n\
+                    \n\
+                    [00:00:00] Hello\n\
+                    [00:00:01] world.\n";
+    assert_eq!(std::fs::read_to_string(&dest).unwrap(), expected);
+}
+
+#[test]
+fn write_md_formats_hour_boundaries_and_truncates_to_the_second() {
+    let dir = tempfile::tempdir().unwrap();
+    let result = TranscriptionResult {
+        source: dir.path().join("long.opus"),
+        text: "late segment".to_string(),
+        segments: vec![Segment {
+            start: 3661.987,
+            end: 3662.0,
+            text: "late segment".to_string(),
+        }],
+        language: "en".to_string(),
+        duration: 3662.0,
+    };
+    let dest = dir.path().join("long.md");
+
+    write_md(&result, &dest).unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(&dest).unwrap(),
+        "# long\n\n[01:01:01] late segment\n"
+    );
+}
+
+#[test]
+fn write_md_with_no_segments_is_just_the_title() {
+    let dir = tempfile::tempdir().unwrap();
+    let result = TranscriptionResult {
+        source: dir.path().join("silent.opus"),
+        text: String::new(),
+        segments: Vec::new(),
+        language: "en".to_string(),
+        duration: 0.0,
+    };
+    let dest = dir.path().join("silent.md");
+
+    write_md(&result, &dest).unwrap();
+
+    assert_eq!(std::fs::read_to_string(&dest).unwrap(), "# silent\n\n");
 }
 
 /// Python: test_append_manifest_writes_one_json_line.

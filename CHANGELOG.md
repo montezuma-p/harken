@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- **Fixed: a WhatsApp export with a bad date in a message header crashed
+  instead of exiting cleanly.** The header patterns validate shape, not the
+  calendar, so `31/02/2026`, `99/99/2026` or a non-ASCII digit panicked while
+  parsing untrusted zip content. Such a line is now treated as what it is — not
+  a header — and folded into the previous message as a continuation. It is also
+  excluded from the day-first/month-first inference, where a single bad line
+  used to be able to flip the date order of every valid message in the chat.
+- **Fixed: an unreadable chat entry inside an otherwise valid zip panicked**
+  instead of exiting `2` like every other input error. An attachment that
+  cannot be read is now a warning and the rest of the batch continues.
+- **New `--format md`**: a transcript meant to be read, with the source name as
+  the title and one `[hh:mm:ss] text` line per segment.
+
 ## v0.4.1 — 2026-08-20
 
 - Transcription now goes through FFI bindings kept in this repo (`src/ffi.rs`)

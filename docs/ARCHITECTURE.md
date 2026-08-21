@@ -3,7 +3,7 @@
 Rust crate, single binary. Transcription engine is whisper.cpp (via direct FFI
 bindings in this repo); all audio decoding happens in-process. Ported from a Python
 implementation (faster-whisper/CTranslate2) in v0.3.0; the Python test suite
-was carried over as the behavior spec (78 tests in `tests/`, all offline).
+was carried over as the behavior spec (88 tests in `tests/`, all offline).
 
 ## Flow
 
@@ -18,7 +18,7 @@ CLI (clap, src/cli.rs)
                  ├─ engine.transcribe(path)
                  │     ├─ audio::decode_audio_16k_mono  (libopus | symphonia+rubato)
                  │     └─ whisper.cpp full()            (context loaded lazily, once)
-                 ├─ writers::write_output               (txt | json | srt)
+                 ├─ writers::write_output               (txt | json | srt | md)
                  └─ writers::append_manifest            (manifest.jsonl)
 ```
 
@@ -55,7 +55,7 @@ library so tests can drive it with a fake engine.
 `Transcriber` trait that keeps the whole pipeline testable offline.
 `assemble_result` trims the leading space whisper's tokenizer puts on each
 segment, then joins segments with single spaces — this trimming is a spec'd
-contract (txt/srt/json output depends on it). `WhisperCppEngine` loads the
+contract (txt/srt/json/md output depends on it). `WhisperCppEngine` loads the
 whisper context lazily on the first `transcribe()` and reuses it for the whole
 batch (one model load per run, the crate's main perf property). It talks to
 whisper.cpp through the raw bindings in **`src/ffi.rs`** (manually mirrored from
@@ -124,8 +124,9 @@ accumulates duplicate sources, and readers take the last entry (last-wins —
 `whatsapp::load_manifest_texts` relies on this).
 
 **`src/whatsapp.rs`** — chat-export mode. The iOS and Android message-header
-regexes are exact ports from Python and are locked by 47 tests — don't touch
-them casually. Format detection runs once per chat (first line matching either
+regexes are exact ports from Python and are locked by 53 tests — don't touch
+them casually. They validate *shape*, not the calendar: a header whose date is
+not a real date is not a header, and falls through to the continuation branch. Format detection runs once per chat (first line matching either
 pattern wins) and applies to the whole corpus. Android day-first vs
 month-first is inferred from the entire corpus of header dates: any first
 component > 12 proves day-first, any second component > 12 proves month-first,
@@ -134,14 +135,18 @@ continuations folded into the previous message's body; U+200E/U+200F are
 stripped before matching but the merged output preserves the raw lines. The
 merge step filters manifest entries down to this run's selection so a reused
 `--out` with a narrower date range can't inline stale transcripts. Output dir
-creation is deferred until the chat log is located, so a bad zip exits 2
-without leaving an empty `<out>/audio/` behind.
+creation is deferred until the chat log has been read, so a bad zip exits 2
+without leaving an empty `<out>/audio/` behind — locating the entry is not
+enough, since reading it can still fail on a corrupt or unsupported member.
 
 **`src/writers.rs`** — output serialization. txt is `text + "\n"`, srt is the
 standard numbered cue blocks with `HH:MM:SS,mmm` timestamps (millisecond
-rounding via `round()`), json is pretty-printed with a trailing newline. These
-are byte-exact contracts (see `tests/writers_test.rs`). The manifest is one
-compact JSON object per line: source, output, language, duration, text.
+rounding via `round()`), json is pretty-printed with a trailing newline, md is
+`# <source stem>` then one `[HH:MM:SS] text` line per segment. srt and md split
+the timestamp through the same `hms_millis`, so they never disagree on a
+boundary; md drops the milliseconds, which truncates to the second. These are
+byte-exact contracts (see `tests/writers_test.rs`). The manifest is one compact
+JSON object per line: source, output, language, duration, text.
 
 ## Contracts inherited from the Python port
 
@@ -150,7 +155,12 @@ Behaviors the tests pin down and that are easy to break by accident:
 - Segment text is trimmed and joined with single spaces; no leading/doubled
   whitespace ever reaches an output file.
 - txt output ends with exactly one `\n`; srt cue format and timestamp rounding
-  are byte-exact; json is pretty-printed and ends with `\n`.
+  are byte-exact; json is pretty-printed and ends with `\n`; md is byte-exact
+  too, and a segment-less result is still title + blank line.
+- A chat header whose date is shape-valid but not a real date (`31/02`, a
+  non-ASCII digit) is not a header: it falls through to the continuation
+  branch. Such dates are also excluded from the day-first inference corpus,
+  since they read as impossible either way and carry no ordering evidence.
 - Skips (`output exists && !force`) are not failures and don't affect the exit
   code; a failed file doesn't stop the batch.
 - Stem-collision numbering counts per run, independent of what's on disk.

@@ -36,7 +36,8 @@ harken whatsapp "$HOME/Downloads/WhatsApp Chat - X.zip" \
   required).
 - `--lang auto` for non-Portuguese audio; `--model medium` when accuracy
   matters more than speed; `--model small-q5_1` for a 60% smaller download;
-  `--format json|srt` for timestamps.
+  `--format json|srt|md` for timestamps (`md` is the readable one: one
+  `[hh:mm:ss] line` per segment).
 - First ever run downloads the ggml model (~466 MB for `small`) to
   `~/.cache/harken/models`; after that it works fully offline.
 - Full docs: [README](https://github.com/montezuma-p/harken#readme).
