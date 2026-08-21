@@ -144,7 +144,10 @@ fn main() {
     common_build(&mut cpp_build, whisper_dir, &target);
     cpp_build
         .cpp(true)
-        .flag_if_supported("-std=c++17")
+        // Must be std(), not flag("-std=c++17"): MSVC spells it /std:c++17 and
+        // silently ignored the unix form, leaving ggml-backend-reg.cpp to compile
+        // as C++14 with no std::filesystem. cc picks the right spelling.
+        .std("c++17")
         .file(whisper_dir.join("src/whisper.cpp"))
         .file(whisper_dir.join("ggml/src/ggml.cpp"))
         .file(whisper_dir.join("ggml/src/ggml-backend.cpp"))
