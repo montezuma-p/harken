@@ -10,6 +10,10 @@
 - CI gained two jobs: `msrv`, which checks the declared 1.88 floor still builds,
   and `deps`, which runs `cargo audit` and `cargo machete` — both were
   local-only gates before.
+- The release path is now rehearsable: a pull request builds all five target
+  platforms without publishing (`pr-run-mode = "upload"`). Until now the only
+  way to exercise the cross-platform build was to push a `v*` tag, which is
+  exactly how v0.4.0 died on the Windows build.
 
 ## v0.4.2 — 2026-08-22
 
