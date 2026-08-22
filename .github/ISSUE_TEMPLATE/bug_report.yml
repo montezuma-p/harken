@@ -1,0 +1,57 @@
+name: Bug report
+description: Something misbehaved — wrong output, crash, bad exit code.
+labels: ["bug"]
+body:
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      description: The exact command you ran.
+      placeholder: harken export.zip --model small
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: What harken printed (stderr is where progress/errors go). Include the exit code if you know it.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: harken version
+      description: Output of `harken --version`.
+      placeholder: harken 0.4.2
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: OS and architecture
+      placeholder: Fedora 43 x86_64 / macOS 15 arm64 / Windows 11 x64
+    validations:
+      required: true
+  - type: dropdown
+    id: input-kind
+    attributes:
+      label: Input type
+      options:
+        - WhatsApp export zip
+        - Standalone audio file(s)
+        - Directory of audio files
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: install
+    attributes:
+      label: How was it installed?
+      placeholder: shell installer / cargo install / cargo binstall / built from source
