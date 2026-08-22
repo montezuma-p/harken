@@ -49,7 +49,10 @@ notes, roadmap, ADRs — never commit it).
   would drag this toolchain onto every `cargo install harken`.
 - **cargo-audit and cargo-machete are version-pinned** in the Makefile's
   `install-dev-tools` and in the `deps` CI job. Bump both together, or a local
-  `make check` and CI can disagree about findings.
+  `make check` and CI can disagree about findings. CI gets them as prebuilt
+  binaries through `taiki-e/install-action`, itself pinned to an exact version
+  (`@v2` is a mutable tag) — the tool versions there are explicit, so the
+  action's version database never decides what gets installed.
 
 ## Build gotchas
 

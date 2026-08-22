@@ -62,7 +62,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@1.97.1
-      - uses: taiki-e/install-action@v2
+      # Prebuilt binaries instead of `cargo install`, which would spend ~5min
+      # compiling cargo-audit every run. The action verifies SHA256 and any
+      # attestation the tool publishes. Pinned to an exact version rather than
+      # @v2, which is a mutable tag — upstream recommends this, and it costs
+      # nothing here because the tool versions below are explicit, so the
+      # action's own version database is never consulted.
+      - uses: taiki-e/install-action@v2.86.5
         with:
           tool: cargo-audit@0.22.2,cargo-machete@0.9.2
       - run: cargo audit
