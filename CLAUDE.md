@@ -59,10 +59,16 @@ notes, roadmap, ADRs — never commit it).
   commits are unreachable from the default branch, so pinning one by SHA is the
   "impostor commit" pattern and Dependabot cannot track it.
 - **Dependabot** (`.github/dependabot.yml`) covers actions weekly and cargo
-  monthly, each grouped into a single PR because a PR now costs a full 5-target
-  matrix run. It cannot be scoped to one workflow file, so it may propose edits
-  to the GENERATED `release.yml` — never merge those; bump
-  `cargo-dist-version` and run `dist generate` instead.
+  monthly, grouped into a single PR each because a PR costs a full 5-target
+  matrix run. Cargo majors are excluded from the group so one breaking bump
+  cannot redden the safe ones.
+- **`dist plan` is also a drift check on `release.yml`.** It fails (exit 255,
+  printing the diff) whenever that file no longer matches what `dist generate`
+  would produce — so hand edits and stray Dependabot bumps are caught on every
+  PR and tag, not discovered later. The actions dist hardcodes
+  (`actions/checkout`, `swatinem/rust-cache`, `actions/{download,upload}-artifact`)
+  are therefore ignored in `dependabot.yml`: bumping them there yields a PR that
+  can never merge. They move only when `cargo-dist-version` moves.
 
 ## Build gotchas
 
