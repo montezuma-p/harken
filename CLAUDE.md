@@ -1,8 +1,8 @@
 # CLAUDE.md — harken
 
 Local, offline audio transcription CLI (whisper.cpp via direct FFI + vendored sources) with WhatsApp
-chat-export support. Rust crate `harken` — full port from Python is done,
-the Python tree is gone. Architecture map: `docs/ARCHITECTURE.md`.
+chat-export support and an MCP server mode (`harken mcp`). Rust crate `harken` — full port from
+Python is done, the Python tree is gone. Architecture map: `docs/ARCHITECTURE.md`.
 
 Local context: if an untracked `hub/` dir exists, read `hub/README.md` (personal
 notes, roadmap, ADRs — never commit it).
@@ -10,11 +10,11 @@ notes, roadmap, ADRs — never commit it).
 ## Commands
 
 - `make check` — full local CI: `fmt` + `clippy -D warnings` + `test` + `cargo audit` + `cargo machete`. Run before claiming anything done.
-- `cargo test` — 88 integration tests, instant and offline.
+- `cargo test` — 115 integration tests, instant and offline.
 - `cargo test --test ffi_smoke_test -- --ignored` — opt-in smoke test that loads
   a real whisper context through `src/ffi.rs` (skips if `ggml-tiny.bin` is not
   already cached; never runs in CI). Run it after touching `src/ffi.rs`,
-  `build.rs`, or the submodule pin — the 88 tests above use `FakeEngine` and
+  `build.rs`, or the submodule pin — the 115 tests above use `FakeEngine` and
   cannot catch an FFI mistake.
 - `cargo build` — needs a C++ toolchain (whisper.cpp is compiled in) and the
   `vendor/whisper.cpp` submodule checked out (`git submodule update --init
@@ -24,10 +24,13 @@ notes, roadmap, ADRs — never commit it).
 
 ## Inviolable rules
 
-- **The 88 tests in `tests/` are the behavior SPEC**, ported from the Python
-  suite (81 tests). A behavior change requires consciously changing the
-  corresponding test — never "fix" a test to make code pass.
-- **stdout stays clean.** All progress, logs, and summaries go to stderr.
+- **The 115 tests in `tests/` are the behavior SPEC** (the original 88 were
+  ported from the Python suite's 81; the MCP server added 27). A behavior
+  change requires consciously changing the corresponding test — never "fix" a
+  test to make code pass.
+- **stdout stays clean.** All progress, logs, and summaries go to stderr. The
+  one exception is `harken mcp`, where stdout *is* the protocol channel: it
+  carries only newline-delimited JSON-RPC frames, and logs still go to stderr.
 - **Exit codes:** `0` ok (skips are not failures), `1` at least one
   transcription failed, `2` input error (bad path, bad date, no chat log).
 - **Tests stay offline.** The batch pipeline is generic over the `Transcriber`

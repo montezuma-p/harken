@@ -1,10 +1,10 @@
 [package]
 name = "harken"
-version = "0.4.2"
+version = "0.5.0"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT"
-description = "Local, offline audio transcription CLI (whisper.cpp) with WhatsApp chat-export support"
+description = "Local, offline audio transcription CLI and MCP server (whisper.cpp) with WhatsApp chat-export support"
 repository = "https://github.com/montezuma-p/harken"
 homepage = "https://github.com/montezuma-p/harken"
 exclude = [

@@ -36,8 +36,22 @@ whatsapp::run
        (transcripts read back from manifest.jsonl, filtered to THIS run's selection)
 ```
 
+MCP mode (`harken mcp`):
+
+```
+mcp::serve (JSON-RPC 2.0 over stdio, newline-delimited JSON, one engine per session)
+  ├─ initialize | tools/list | ping      (protocol plumbing, version 2025-06-18)
+  └─ tools/call
+       ├─ transcribe_file               → engine.transcribe, transcript as content
+       └─ transcribe_whatsapp_export    → same zip/parse/select helpers as
+            whatsapp mode, attachments extracted to a per-call temp dir,
+            transcripts returned as content — no files written
+```
+
 Exit codes everywhere: `0` ok, `1` some transcription failed, `2` input error.
-All progress/log output goes to stderr; stdout is never written to.
+All progress/log output goes to stderr; stdout is never written to — except in
+MCP mode, where stdout is the protocol channel and carries exactly the JSON-RPC
+frames, nothing else.
 
 ## Modules
 
@@ -138,6 +152,23 @@ merge step filters manifest entries down to this run's selection so a reused
 creation is deferred until the chat log has been read, so a bad zip exits 2
 without leaving an empty `<out>/audio/` behind — locating the entry is not
 enough, since reading it can still fail on a corrupt or unsupported member.
+
+**`src/mcp.rs`** — MCP server mode (`harken mcp`): JSON-RPC 2.0 over stdio,
+hand-rolled on serde_json — no SDK, no async runtime, zero new dependencies.
+Framing is newline-delimited compact JSON, flushed per message; protocol
+version 2025-06-18 (older handshake revisions echoed, unknown ones answered
+with ours — disconnecting is the client's decision). `serve` is generic over
+`BufRead`/`Write` and takes `&mut dyn Transcriber` — the same testability seam
+as the batch pipeline, driven in tests by in-memory buffers and `FakeEngine`.
+One engine lives for the whole session, so the lazy context load is reused
+across tool calls. Tool handlers call `transcriber.transcribe()` and the pub
+`whatsapp` helpers directly instead of reusing `run_batch_mode`/`whatsapp::run`:
+those return exit codes, drop errors on stderr, and panic on IO — fatal in a
+long-lived server. Two error channels per the MCP spec: protocol errors are
+JSON-RPC `error` objects; everything after a well-formed request (missing file,
+bad zip, failed transcription) is a result with `isError: true`. The WhatsApp
+tool extracts attachments to a per-call temp dir and returns transcripts as
+content — it writes no output files.
 
 **`src/writers.rs`** — output serialization. txt is `text + "\n"`, srt is the
 standard numbered cue blocks with `HH:MM:SS,mmm` timestamps (millisecond

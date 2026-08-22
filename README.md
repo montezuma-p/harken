@@ -91,6 +91,35 @@ one-liner above if it is missing. (Alternatively: clone the repo and the
 project-scoped skill in `.claude/skills/` is picked up automatically, or
 copy/symlink `.claude/skills/transcribe-audio/` into `~/.claude/skills/`.)
 
+## Use from any MCP client
+
+`harken mcp` runs the same engine as an
+[MCP](https://modelcontextprotocol.io) server over stdio, exposing two tools —
+`transcribe_file` and `transcribe_whatsapp_export` — to any MCP client:
+Claude Code, Claude Desktop, Cursor, Windsurf. Still fully offline, still the
+same single binary.
+
+```bash
+claude mcp add harken -- harken mcp
+```
+
+or, in a project `.mcp.json` (Claude Code) / `claude_desktop_config.json`
+(Claude Desktop):
+
+```json
+{
+  "mcpServers": {
+    "harken": { "command": "harken", "args": ["mcp"] }
+  }
+}
+```
+
+Model, language and device are fixed per server instance (`harken mcp --model
+medium --lang auto`) with the same defaults as the CLI (`small`, `pt`, `cpu`) —
+run two entries for two languages. A first call with an uncached model
+downloads it inside that call (~466 MB for `small`); pre-warm with any CLI run
+(`harken --model small some.opus`) if your client times out long tool calls.
+
 ## Usage
 
 ![harken transcribing the voice notes of a WhatsApp chat export from the command line](https://raw.githubusercontent.com/montezuma-p/harken/main/docs/assets/demo-cli.gif)

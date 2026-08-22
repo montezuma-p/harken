@@ -91,6 +91,36 @@ fn parser_routes_whatsapp_subcommand_with_args() {
     }
 }
 
+// --- mcp subcommand ----------------------------------------------------------
+
+#[test]
+fn parser_routes_mcp_subcommand_with_defaults() {
+    let cli = Cli::try_parse_from(["harken", "mcp"]).unwrap();
+
+    match cli.command {
+        Some(Commands::Mcp(args)) => {
+            assert_eq!(args.model, "small");
+            assert_eq!(args.lang, "pt");
+            assert_eq!(args.device, "cpu");
+        }
+        other => panic!("expected mcp subcommand, got {other:?}"),
+    }
+}
+
+#[test]
+fn parser_routes_mcp_subcommand_with_flags() {
+    let cli =
+        Cli::try_parse_from(["harken", "mcp", "--model", "medium", "--lang", "auto"]).unwrap();
+
+    match cli.command {
+        Some(Commands::Mcp(args)) => {
+            assert_eq!(args.model, "medium");
+            assert_eq!(args.lang, "auto");
+        }
+        other => panic!("expected mcp subcommand, got {other:?}"),
+    }
+}
+
 // --- lang auto -> language=None ---------------------------------------------
 
 #[test]

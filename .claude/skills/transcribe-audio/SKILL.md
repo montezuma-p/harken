@@ -40,4 +40,7 @@ harken whatsapp "$HOME/Downloads/WhatsApp Chat - X.zip" \
   `[hh:mm:ss] line` per segment).
 - First ever run downloads the ggml model (~466 MB for `small`) to
   `~/.cache/harken/models`; after that it works fully offline.
+- If the harken MCP server is connected (`claude mcp add harken -- harken mcp`),
+  prefer its tools — `transcribe_file` and `transcribe_whatsapp_export` — over
+  the shell invocations above; the CLI remains the fallback.
 - Full docs: [README](https://github.com/montezuma-p/harken#readme).

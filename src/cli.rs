@@ -24,6 +24,9 @@ pub struct Cli {
 pub enum Commands {
     /// Transcribe audio attachments from a WhatsApp chat export
     Whatsapp(WhatsappArgs),
+
+    /// Run as an MCP (Model Context Protocol) server over stdio
+    Mcp(McpArgs),
 }
 
 #[derive(Args, Debug)]
@@ -97,6 +100,21 @@ pub struct WhatsappArgs {
     /// Re-transcribe even if output already exists
     #[arg(long)]
     pub force: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct McpArgs {
+    /// Whisper model size (or a path to a ggml .bin file)
+    #[arg(long, default_value = "small")]
+    pub model: String,
+
+    /// Language code, or 'auto' to auto-detect
+    #[arg(long, default_value = "pt")]
+    pub lang: String,
+
+    /// Device to run on
+    #[arg(long, default_value = "cpu")]
+    pub device: String,
 }
 
 /// `--lang auto` means "let the engine detect the language".

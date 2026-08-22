@@ -280,8 +280,10 @@ pub fn default_out_dir(export_zip: &Path) -> PathBuf {
     PathBuf::from(format!("./{stem}-transcripts"))
 }
 
-fn parse_date_arg(value: &str) -> Result<NaiveDate, ()> {
-    NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| ())
+/// Parse a `--from`/`--to` date argument (YYYY-MM-DD).
+pub fn parse_date_arg(value: &str) -> Result<NaiveDate, String> {
+    NaiveDate::parse_from_str(value, "%Y-%m-%d")
+        .map_err(|_| format!("invalid date (expected YYYY-MM-DD): '{value}'"))
 }
 
 fn load_manifest_texts(manifest: &Path) -> HashMap<String, String> {
@@ -332,7 +334,7 @@ pub fn run(args: &WhatsappArgs, transcriber: &mut dyn Transcriber) -> i32 {
     let date_from = match &args.date_from {
         Some(v) => match parse_date_arg(v) {
             Ok(d) => Some(d),
-            Err(()) => {
+            Err(_) => {
                 eprintln!(
                     "error: invalid date (expected YYYY-MM-DD): {} / {}",
                     fmt_opt(&args.date_from),
@@ -346,7 +348,7 @@ pub fn run(args: &WhatsappArgs, transcriber: &mut dyn Transcriber) -> i32 {
     let date_to = match &args.date_to {
         Some(v) => match parse_date_arg(v) {
             Ok(d) => Some(d),
-            Err(()) => {
+            Err(_) => {
                 eprintln!(
                     "error: invalid date (expected YYYY-MM-DD): {} / {}",
                     fmt_opt(&args.date_from),

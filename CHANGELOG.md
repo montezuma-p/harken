@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **New subcommand: `harken mcp`** — an MCP (Model Context Protocol) server
+  over stdio, exposing `transcribe_file` and `transcribe_whatsapp_export` to
+  any MCP client (Claude Code, Claude Desktop, Cursor, Windsurf). Protocol
+  version 2025-06-18, hand-rolled JSON-RPC 2.0 on serde_json — zero new
+  dependencies, no async runtime. Model/language/device are per-server flags
+  with the CLI's defaults; one whisper context serves the whole session. The
+  WhatsApp tool returns transcripts directly as content and writes no files.
+  This is the one mode where stdout is written to (protocol frames only; logs
+  stay on stderr).
 - The build is now reproducible across machines: `rust-toolchain.toml` pins the
   compiler to 1.97.1 (excluded from the published crate, so `cargo install` is
   unaffected), and cargo-audit/cargo-machete are version-pinned. `clippy -D
