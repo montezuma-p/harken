@@ -1,5 +1,10 @@
 name: CI
 
+# Every action is pinned to a commit SHA, not a tag: `@v6`, `@v2` and the like
+# are mutable refs that the owner can move at any time. The trailing comment is
+# what Dependabot reads to know which version a SHA stands for — keep it in sync
+# when bumping (see .github/dependabot.yml).
+
 on:
   push:
     branches: [main]
@@ -19,17 +24,23 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           submodules: recursive
       # Same version as rust-toolchain.toml — bump the two together. Pinned
-      # rather than @stable because `clippy -D warnings` below is a gate: a new
-      # Rust release shipping a new lint would turn this red with no change of
-      # ours.
-      - uses: dtolnay/rust-toolchain@1.97.1
+      # rather than tracking stable because `clippy -D warnings` below is a
+      # gate: a new Rust release shipping a new lint would turn this red with
+      # no change of ours.
+      #
+      # Addressed as @v1 with an explicit `toolchain` rather than as
+      # @1.97.1, because dtolnay ships those version refs as branches whose
+      # commits are not reachable from the default branch — pinning one by SHA
+      # is the "impostor commit" pattern, and Dependabot cannot track it.
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
+          toolchain: "1.97.1"
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
@@ -39,14 +50,16 @@ jobs:
   msrv:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@1.88
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: "1.88"
       # Distinct key: rust-cache derives its own from `rustc -vV`, which
       # resolves through rust-toolchain.toml to 1.97.1 — this job would
       # otherwise share the `test` job's cache while building with 1.88.
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           key: msrv
       # `+1.88` is load-bearing: rust-toolchain.toml pins 1.97.1 and a bare
@@ -60,15 +73,14 @@ jobs:
   deps:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: "1.97.1"
       # Prebuilt binaries instead of `cargo install`, which would spend ~5min
       # compiling cargo-audit every run. The action verifies SHA256 and any
-      # attestation the tool publishes. Pinned to an exact version rather than
-      # @v2, which is a mutable tag — upstream recommends this, and it costs
-      # nothing here because the tool versions below are explicit, so the
-      # action's own version database is never consulted.
-      - uses: taiki-e/install-action@v2.86.5
+      # attestation the tool publishes.
+      - uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2.86.5
         with:
           tool: cargo-audit@0.22.2,cargo-machete@0.9.2
       - run: cargo audit

@@ -50,9 +50,19 @@ notes, roadmap, ADRs — never commit it).
 - **cargo-audit and cargo-machete are version-pinned** in the Makefile's
   `install-dev-tools` and in the `deps` CI job. Bump both together, or a local
   `make check` and CI can disagree about findings. CI gets them as prebuilt
-  binaries through `taiki-e/install-action`, itself pinned to an exact version
-  (`@v2` is a mutable tag) — the tool versions there are explicit, so the
-  action's version database never decides what gets installed.
+  binaries through `taiki-e/install-action` — the tool versions there are
+  explicit, so the action's version database never decides what gets installed.
+- **Every action in `ci.yml` is pinned by commit SHA**, with a `# v6`-style
+  comment that Dependabot reads to resolve the version. Keep the comment in sync
+  when bumping. `dtolnay/rust-toolchain` is addressed as `@v1` with an explicit
+  `toolchain:` input, not as `@1.97.1`: those version refs are *branches* whose
+  commits are unreachable from the default branch, so pinning one by SHA is the
+  "impostor commit" pattern and Dependabot cannot track it.
+- **Dependabot** (`.github/dependabot.yml`) covers actions weekly and cargo
+  monthly, each grouped into a single PR because a PR now costs a full 5-target
+  matrix run. It cannot be scoped to one workflow file, so it may propose edits
+  to the GENERATED `release.yml` — never merge those; bump
+  `cargo-dist-version` and run `dist generate` instead.
 
 ## Build gotchas
 
