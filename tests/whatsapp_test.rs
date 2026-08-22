@@ -16,8 +16,8 @@ use common::FakeEngine;
 use harken::cli::{Cli, Commands, WhatsappArgs};
 use harken::engine::{EngineError, Segment, Transcriber, TranscriptionResult};
 use harken::whatsapp::{
-    build_merged_chat, default_out_dir, extract_attachment, find_attachment_member,
-    find_chat_entry, is_audio_attachment, parse_chat, run, select_audio_messages, Message,
+    Message, build_merged_chat, default_out_dir, extract_attachment, find_attachment_member,
+    find_chat_entry, is_audio_attachment, parse_chat, run, select_audio_messages,
 };
 use harken::writers::OutputFormat;
 

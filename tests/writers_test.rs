@@ -6,7 +6,7 @@ use std::path::Path;
 
 use harken::engine::{Segment, TranscriptionResult};
 use harken::writers::{append_manifest, write_json, write_md, write_srt, write_txt};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Python fixture `sample_result`.
 fn sample_result(dir: &Path) -> TranscriptionResult {

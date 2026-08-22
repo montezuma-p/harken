@@ -4,7 +4,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use crate::engine::Transcriber;
-use crate::writers::{append_manifest, write_output, OutputFormat};
+use crate::writers::{OutputFormat, append_manifest, write_output};
 
 pub const AUDIO_EXTENSIONS: &[&str] = &[
     "opus", "ogg", "oga", "mp3", "m4a", "wav", "flac", "mp4", "webm", "aac", "wma", "amr",
@@ -182,9 +182,5 @@ pub fn run_batch_mode(
         }
     };
     let stats = run_batch(&files, Path::new(out), transcriber, fmt, force);
-    if stats.failed > 0 {
-        1
-    } else {
-        0
-    }
+    if stats.failed > 0 { 1 } else { 0 }
 }

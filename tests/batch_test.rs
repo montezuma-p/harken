@@ -9,7 +9,7 @@ mod common;
 use std::fs;
 use std::path::PathBuf;
 
-use harken::batch::{collect_audio_files, run_batch, BatchStats};
+use harken::batch::{BatchStats, collect_audio_files, run_batch};
 use harken::writers::OutputFormat;
 
 use common::FakeEngine;

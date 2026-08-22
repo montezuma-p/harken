@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use harken::engine::{assemble_result, EngineError, Segment, Transcriber, TranscriptionResult};
+use harken::engine::{EngineError, Segment, Transcriber, TranscriptionResult, assemble_result};
 
 pub struct FakeEngine {
     pub language: Option<String>,

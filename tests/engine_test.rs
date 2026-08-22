@@ -8,7 +8,7 @@ mod common;
 use std::path::Path;
 
 use common::FakeEngine;
-use harken::engine::{assemble_result, Segment, Transcriber};
+use harken::engine::{Segment, Transcriber, assemble_result};
 
 /// Python: test_transcribe_raises_file_not_found_before_loading_model.
 /// A missing audio file must fail before any transcription work happens.

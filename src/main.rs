@@ -1,7 +1,7 @@
 use clap::Parser;
 
 use harken::batch::run_batch_mode;
-use harken::cli::{language_option, Cli, Commands};
+use harken::cli::{Cli, Commands, language_option};
 use harken::engine::WhisperCppEngine;
 
 fn main() {

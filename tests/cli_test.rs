@@ -10,11 +10,11 @@ mod common;
 
 use std::fs;
 
-use clap::error::ErrorKind;
 use clap::Parser;
+use clap::error::ErrorKind;
 
 use harken::batch::run_batch_mode;
-use harken::cli::{language_option, Cli, Commands};
+use harken::cli::{Cli, Commands, language_option};
 use harken::writers::OutputFormat;
 
 use common::FakeEngine;

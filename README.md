@@ -55,7 +55,7 @@ Other options:
 
 ```bash
 cargo binstall harken        # prebuilt binary via cargo-binstall
-cargo install harken --locked  # build from source (needs cmake + a C++ toolchain)
+cargo install harken --locked  # build from source (needs Rust 1.88+, cmake + a C++ toolchain)
 ```
 
 > Building from source with CMake >= 4 and no system libopus? The vendored

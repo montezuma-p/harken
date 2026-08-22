@@ -200,15 +200,15 @@ pub fn select_audio_messages(
             if !is_audio_attachment(filename) {
                 return false;
             }
-            if let Some(from) = date_from {
-                if m.date < from {
-                    return false;
-                }
+            if let Some(from) = date_from
+                && m.date < from
+            {
+                return false;
             }
-            if let Some(to) = date_to {
-                if m.date > to {
-                    return false;
-                }
+            if let Some(to) = date_to
+                && m.date > to
+            {
+                return false;
             }
             true
         })
@@ -293,13 +293,13 @@ fn load_manifest_texts(manifest: &Path) -> HashMap<String, String> {
         if line.trim().is_empty() {
             continue;
         }
-        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
-            if let (Some(source), Some(text)) = (
+        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line)
+            && let (Some(source), Some(text)) = (
                 entry.get("source").and_then(|v| v.as_str()),
                 entry.get("text").and_then(|v| v.as_str()),
-            ) {
-                texts.insert(source.to_string(), text.to_string());
-            }
+            )
+        {
+            texts.insert(source.to_string(), text.to_string());
         }
     }
     texts
@@ -481,9 +481,5 @@ pub fn run(args: &WhatsappArgs, transcriber: &mut dyn Transcriber) -> i32 {
             .expect("failed to write merged chat");
     }
 
-    if stats.failed > 0 {
-        1
-    } else {
-        0
-    }
+    if stats.failed > 0 { 1 } else { 0 }
 }
