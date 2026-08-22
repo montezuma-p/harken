@@ -43,7 +43,12 @@ jobs:
         with:
           submodules: recursive
       - uses: dtolnay/rust-toolchain@1.88
+      # Distinct key: rust-cache derives its own from `rustc -vV`, which
+      # resolves through rust-toolchain.toml to 1.97.1 — this job would
+      # otherwise share the `test` job's cache while building with 1.88.
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
       # `+1.88` is load-bearing: rust-toolchain.toml pins 1.97.1 and a bare
       # `cargo check` would silently honour it, so this job would stop testing
       # the floor while still reporting green.
