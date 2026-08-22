@@ -1,7 +1,15 @@
 # Changelog
 
-## Unreleased
+## v0.4.2 — 2026-08-22
 
+- The crate is now **edition 2024** and declares an explicit **MSRV of 1.88**
+  (`rust-version`). No behavior change: the code already used the 2024 form of
+  `unsafe extern` and has no `unsafe fn` bodies, so the only practical effect is
+  that let-chains became available — three nested `if`s in `src/whatsapp.rs`
+  collapsed into them. 1.88 is the floor twice over: let-chains are not available
+  before it, and the dependency graph (`icu_*`, via `url`) already required it.
+  Older toolchains now get a clean MSRV message instead of a failure deep in a
+  transitive dependency.
 - **Fixed: a WhatsApp export with a bad date in a message header crashed
   instead of exiting cleanly.** The header patterns validate shape, not the
   calendar, so `31/02/2026`, `99/99/2026` or a non-ASCII digit panicked while
