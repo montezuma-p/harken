@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- The build is now reproducible across machines: `rust-toolchain.toml` pins the
+  compiler to 1.97.1 (excluded from the published crate, so `cargo install` is
+  unaffected), and cargo-audit/cargo-machete are version-pinned. `clippy -D
+  warnings` on a floating stable meant a new Rust release could redden the tree
+  with no change of ours.
+- CI gained two jobs: `msrv`, which checks the declared 1.88 floor still builds,
+  and `deps`, which runs `cargo audit` and `cargo machete` — both were
+  local-only gates before.
+
 ## v0.4.2 — 2026-08-22
 
 - The crate is now **edition 2024** and declares an explicit **MSRV of 1.88**

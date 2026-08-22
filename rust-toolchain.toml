@@ -1,0 +1,18 @@
+# Pinned so that `make check` and CI compile with the same compiler, and so a
+# release binary is not built by whatever Rust the runner happened to ship —
+# the same reasoning as the AVX2/FMA/F16C floor in build.rs.
+#
+# This matters more than usual here because `clippy -D warnings` is a gate: on a
+# floating stable, a new Rust release turns a green tree red without anyone
+# touching the code.
+#
+# Bump this together with the `dtolnay/rust-toolchain` pin in
+# .github/workflows/ci.yml. It is NOT the MSRV — that is `rust-version` in
+# Cargo.toml (1.88), enforced by the `msrv` CI job.
+#
+# Excluded from the published .crate (see `exclude` in Cargo.toml): cargo ships
+# this file by default, which would make `cargo install harken` drag this exact
+# toolchain onto every user's machine.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]

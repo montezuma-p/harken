@@ -22,10 +22,43 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
+      # Same version as rust-toolchain.toml — bump the two together. Pinned
+      # rather than @stable because `clippy -D warnings` below is a gate: a new
+      # Rust release shipping a new lint would turn this red with no change of
+      # ours.
+      - uses: dtolnay/rust-toolchain@1.97.1
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+
+  # Keeps `rust-version` in Cargo.toml honest — without this, the MSRV is a
+  # claim nobody checks.
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@1.88
+      - uses: Swatinem/rust-cache@v2
+      # `+1.88` is load-bearing: rust-toolchain.toml pins 1.97.1 and a bare
+      # `cargo check` would silently honour it, so this job would stop testing
+      # the floor while still reporting green.
+      - run: cargo +1.88 check --all-targets --locked
+
+  # These two were local-only gates via `make check`. Pinned to the versions in
+  # the Makefile's install-dev-tools target so a tool release cannot change the
+  # verdict on its own.
+  deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit@0.22.2,cargo-machete@0.9.2
+      - run: cargo audit
+      - run: cargo machete

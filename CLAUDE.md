@@ -34,6 +34,23 @@ notes, roadmap, ADRs — never commit it).
   trait; tests use `FakeEngine` (`tests/common/mod.rs`). Never write a test
   that downloads a model, loads a real whisper context, or touches the network.
 
+## Toolchain
+
+- **Edition 2024, MSRV 1.88** (`rust-version` in `Cargo.toml`). The floor is
+  1.88 twice over: let-chains, and the dependency graph (`icu_*` via `url`). The
+  `msrv` CI job runs `cargo +1.88 check --all-targets --locked` — the `+1.88` is
+  load-bearing, since a bare `cargo check` would honour `rust-toolchain.toml`
+  and stop testing the floor while still reporting green.
+- **`rust-toolchain.toml` pins the compiler to 1.97.1**, and
+  `.github/workflows/ci.yml` pins `dtolnay/rust-toolchain@1.97.1` to match.
+  **Bump the two together.** Pinned rather than floating because `clippy -D
+  warnings` is a gate: a new stable shipping a new lint reddens a green tree.
+  The file is in `Cargo.toml`'s `exclude` — cargo packages it by default, which
+  would drag this toolchain onto every `cargo install harken`.
+- **cargo-audit and cargo-machete are version-pinned** in the Makefile's
+  `install-dev-tools` and in the `deps` CI job. Bump both together, or a local
+  `make check` and CI can disagree about findings.
+
 ## Build gotchas
 
 - **`vendor/whisper.cpp` is a git submodule pinned to a tag** (v1.7.6). A plain

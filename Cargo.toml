@@ -9,6 +9,9 @@ repository = "https://github.com/montezuma-p/harken"
 homepage = "https://github.com/montezuma-p/harken"
 exclude = [
     "hub/",
+    # Cargo packages rust-toolchain.toml by default, which would force our
+    # pinned toolchain onto anyone running `cargo install harken`.
+    "rust-toolchain.toml",
     ".playwright-mcp/",
     "transcripts/",
     ".claude/",

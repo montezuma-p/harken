@@ -25,8 +25,10 @@ deps:
 
 check: fmt lint test audit deps
 
+# Versions pinned to the ones the 'deps' CI job installs, so a local 'make
+# check' and CI cannot disagree about audit/machete findings. Bump both together.
 install-dev-tools:
-	cargo install cargo-audit cargo-machete
+	cargo install --locked cargo-audit@0.22.2 cargo-machete@0.9.2
 
 clean:
 	cargo clean
