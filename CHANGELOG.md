@@ -1,7 +1,13 @@
 # Changelog
 
-## Unreleased
+## v0.5.0 — 2026-08-22
 
+- The README and crate metadata now lead with the MCP server: harken's primary
+  surface is "give your agent ears", with the batch CLI and the Claude Code
+  skill as the other two faces of the same binary.
+- **Relicensed from MIT to MIT OR Apache-2.0** — the Rust ecosystem's dual
+  license, adding Apache-2.0's explicit patent grant. `LICENSE` became
+  `LICENSE-MIT`, with `LICENSE-APACHE` alongside it.
 - **New subcommand: `harken mcp`** — an MCP (Model Context Protocol) server
   over stdio, exposing `transcribe_file` and `transcribe_whatsapp_export` to
   any MCP client (Claude Code, Claude Desktop, Cursor, Windsurf). Protocol

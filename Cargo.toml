@@ -3,8 +3,8 @@ name = "harken"
 version = "0.5.0"
 edition = "2024"
 rust-version = "1.88"
-license = "MIT"
-description = "Local, offline audio transcription CLI and MCP server (whisper.cpp) with WhatsApp chat-export support"
+license = "MIT OR Apache-2.0"
+description = "Local, offline audio transcription MCP server and CLI (whisper.cpp) with WhatsApp chat-export support"
 repository = "https://github.com/montezuma-p/harken"
 homepage = "https://github.com/montezuma-p/harken"
 exclude = [
@@ -33,7 +33,7 @@ exclude = [
     "vendor/whisper.cpp/ci/",
 ]
 readme = "README.md"
-keywords = ["whisper", "transcription", "audio", "whatsapp", "speech-to-text"]
+keywords = ["whisper", "transcription", "mcp", "whatsapp", "speech-to-text"]
 categories = ["command-line-utilities", "multimedia::audio"]
 
 [dependencies]

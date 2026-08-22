@@ -1,20 +1,60 @@
 # harken
 
-**Transcribe a WhatsApp chat export — or any audio — fully offline. One 13 MB binary: no Python, no ffmpeg, no API key.**
+**Your agent cannot listen to audio. harken fixes that — locally.**
 
 [![CI](https://github.com/montezuma-p/harken/actions/workflows/ci.yml/badge.svg)](https://github.com/montezuma-p/harken/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![crates.io](https://img.shields.io/crates/v/harken.svg)](https://crates.io/crates/harken)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+
+An [MCP](https://modelcontextprotocol.io) server that transcribes WhatsApp
+voice notes, meeting recordings — any audio — so your agent can read them.
+One 13 MB binary powered by
+[whisper.cpp](https://github.com/ggml-org/whisper.cpp), fully offline: no
+Python, no ffmpeg, no API key, nothing leaves the machine. The same binary is
+also a [batch CLI](#the-cli) and a [Claude Code Agent Skill](#the-agent-skill--claude-code).
 
 ![Claude Code reading a coworker's WhatsApp voice notes through harken and answering with the task, fully offline](https://raw.githubusercontent.com/montezuma-p/harken/main/docs/assets/demo-claude.gif)
 
 *Five Portuguese voice notes explaining one task — transcribed on CPU, read by
 the agent, and answered in five bullets. Nothing left the machine.*
 
-A single static binary powered by [whisper.cpp](https://github.com/ggml-org/whisper.cpp).
-No Python, no ffmpeg, no runtime dependencies — audio decoding (opus, mp3,
-m4a, wav, flac, …) happens in-process.
+## Quickstart — give your agent ears
 
-## What it solves
+Install the binary (Linux/macOS; [more options](#install)):
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/montezuma-p/harken/releases/latest/download/harken-installer.sh | sh
+```
+
+Wire it into your MCP client:
+
+```bash
+claude mcp add harken -- harken mcp
+```
+
+or, in a project `.mcp.json` (Claude Code) / `claude_desktop_config.json`
+(Claude Desktop):
+
+```json
+{
+  "mcpServers": {
+    "harken": { "command": "harken", "args": ["mcp"] }
+  }
+}
+```
+
+That is the whole setup. Two tools appear — `transcribe_file` and
+`transcribe_whatsapp_export` — and any MCP client can use them: Claude Code,
+Claude Desktop, Cursor, Windsurf. Hand the agent an `.opus`, an `.mp3`, a
+whole WhatsApp chat-export zip; it transcribes locally and reads the text.
+
+Model, language and device are fixed per server instance (`harken mcp --model
+medium --lang auto`) with the same defaults as the CLI (`small`, `pt`, `cpu`) —
+run two entries for two languages. A first call with an uncached model
+downloads it inside that call (~466 MB for `small`); pre-warm with any CLI run
+(`harken --model small some.opus`) if your client times out long tool calls.
+
+## Why
 
 A coworker explains one task in five voice notes of 1–2 minutes each. That is
 ten minutes you have to sit through in order — and at the end you still cannot
@@ -22,20 +62,74 @@ search it, quote it, or paste the one sentence that mattered into a ticket.
 
 One 30-second note? Just listen to it. `harken` is for the rest:
 
+- **Agents cannot listen.** You cannot hand an `.opus` to Claude. Through the
+  MCP server (or the Agent Skill), the agent transcribes the notes locally,
+  reads them, and picks up the task context on its own — including the
+  correction buried halfway through the notes.
 - **Volume.** Five notes in a row, a folder of meeting recordings, a whole
-  WhatsApp chat export — one command, one model load, one folder of text. The
-  model loads once per run and is reused for every file in the batch.
+  WhatsApp chat export — one command, one model load, one folder of text.
 - **Text is random-access.** Grep it, skim it, quote it, diff it. Audio at 2x
   is still serial — you cannot ctrl-F a voice note.
-- **Agents cannot listen.** You cannot hand an `.opus` to Claude. That is why
-  harken ships an [Agent Skill](#use-with-claude-code): the agent transcribes
-  the notes locally, reads them, and picks up the task context on its own —
-  including the correction buried halfway through the notes.
 
 Voice notes, meeting recordings, and WhatsApp PTT audio are also often
 sensitive, so none of the above costs you privacy. Everything runs on your own
 machine: no audio and no transcript ever leaves the device, no API key, no
 upload step, no cloud dependency, CPU by default — no GPU required.
+
+## The Agent Skill — Claude Code
+
+Beyond the MCP tools, `harken` ships an
+[Agent Skill](.claude/skills/transcribe-audio/SKILL.md) that teaches Claude
+Code when and how to transcribe audio locally instead of reaching for a cloud
+API. Install it as a plugin:
+
+```
+/plugin marketplace add montezuma-p/harken
+/plugin install harken@harken
+```
+
+The skill invokes the `harken` binary and knows how to install it with the
+one-liner above if it is missing. (Alternatively: clone the repo and the
+project-scoped skill in `.claude/skills/` is picked up automatically, or
+copy/symlink `.claude/skills/transcribe-audio/` into `~/.claude/skills/`.)
+
+## The CLI
+
+The same engine, batch-first — point it at files, folders, globs, or a
+WhatsApp chat-export zip:
+
+![harken transcribing the voice notes of a WhatsApp chat export from the command line](https://raw.githubusercontent.com/montezuma-p/harken/main/docs/assets/demo-cli.gif)
+
+```bash
+# One file → ./transcripts/voice-note.txt
+harken voice-note.opus
+
+# A whole folder, recursively; globs work too
+harken ~/Downloads/meeting-recordings/
+harken "recordings/*.m4a" --out ./out --format srt
+
+# Every voice note in a WhatsApp export ("Export chat" → with media)
+harken whatsapp "WhatsApp Chat with Maria.zip"
+
+# Only a date range, plus a merged chat log with each transcript inlined
+harken whatsapp export.zip --from 2026-07-01 --to 2026-07-15 --merge
+```
+
+Flags (both modes): `--out DIR` (default `./transcripts`, or
+`./<zip-stem>-transcripts` for exports), `--model` (default `small`), `--lang`
+(default `pt`; `auto` to detect), `--format` (`txt`/`json`/`srt`/`md`),
+`--device` (default `cpu`), `--force` (re-transcribe existing outputs).
+WhatsApp mode adds `--from`/`--to` (`YYYY-MM-DD`, inclusive) and `--merge`,
+which writes `_chat.transcribed.txt`: the full original chat with each voice
+note's transcript inlined right under its message. Both iOS and Android export
+formats are auto-detected, including day-first vs month-first Android dates.
+
+Every file gets `<out>/<stem>.<format>`, and a running `manifest.jsonl`
+records one line per transcription. Progress goes to stderr; the exit code is
+`1` if any file failed (skips don't count), `2` for input errors.
+
+> **Privacy note:** output files — transcripts and `manifest.jsonl` — contain
+> the full transcribed text. Keep your output dirs out of version control.
 
 ## Install
 
@@ -74,120 +168,6 @@ git clone --recurse-submodules https://github.com/montezuma-p/harken
 # or, if you already cloned it:
 git submodule update --init --recursive
 ```
-
-## Use with Claude Code
-
-`harken` ships an [Agent Skill](.claude/skills/transcribe-audio/SKILL.md) that
-teaches Claude Code when and how to transcribe audio locally instead of
-reaching for a cloud API. Install it as a plugin:
-
-```
-/plugin marketplace add montezuma-p/harken
-/plugin install harken@harken
-```
-
-The skill invokes the `harken` binary and knows how to install it with the
-one-liner above if it is missing. (Alternatively: clone the repo and the
-project-scoped skill in `.claude/skills/` is picked up automatically, or
-copy/symlink `.claude/skills/transcribe-audio/` into `~/.claude/skills/`.)
-
-## Use from any MCP client
-
-`harken mcp` runs the same engine as an
-[MCP](https://modelcontextprotocol.io) server over stdio, exposing two tools —
-`transcribe_file` and `transcribe_whatsapp_export` — to any MCP client:
-Claude Code, Claude Desktop, Cursor, Windsurf. Still fully offline, still the
-same single binary.
-
-```bash
-claude mcp add harken -- harken mcp
-```
-
-or, in a project `.mcp.json` (Claude Code) / `claude_desktop_config.json`
-(Claude Desktop):
-
-```json
-{
-  "mcpServers": {
-    "harken": { "command": "harken", "args": ["mcp"] }
-  }
-}
-```
-
-Model, language and device are fixed per server instance (`harken mcp --model
-medium --lang auto`) with the same defaults as the CLI (`small`, `pt`, `cpu`) —
-run two entries for two languages. A first call with an uncached model
-downloads it inside that call (~466 MB for `small`); pre-warm with any CLI run
-(`harken --model small some.opus`) if your client times out long tool calls.
-
-## Usage
-
-![harken transcribing the voice notes of a WhatsApp chat export from the command line](https://raw.githubusercontent.com/montezuma-p/harken/main/docs/assets/demo-cli.gif)
-
-### Batch mode — files, folders, or globs
-
-```bash
-# One file
-harken voice-note.opus
-
-# A whole folder, recursively, written to ./transcripts by default
-harken ~/Downloads/meeting-recordings/
-
-# Glob, custom output dir, JSON output, force re-transcription
-harken "recordings/*.m4a" --out ./out --format json --force
-
-# Larger model, auto-detect language instead of the pt default
-harken recording.wav --model medium --lang auto
-```
-
-Flags: `--out DIR` (default `./transcripts`), `--model` (default `small`),
-`--lang` (default `pt`; `--lang auto` to auto-detect), `--format`
-(`txt`/`json`/`srt`/`md`, default `txt`), `--device` (default `cpu`), `--force`
-(re-transcribe even if the output file already exists).
-
-Every file gets `<out>/<stem>.<format>`; a running `manifest.jsonl` records
-one line per transcription. Progress and a final summary print to stderr;
-exit code is `1` if any file failed, `0` otherwise (skips don't count as
-failures).
-
-> **Privacy note:** output files — transcripts and `manifest.jsonl` —
-> contain the full transcribed text. Default output dirs (`transcripts/`,
-> `*-transcripts/`) are gitignored in this repo; keep yours out of version
-> control too.
-
-### WhatsApp export mode — transcribe voice notes straight from a chat export
-
-Export a chat from WhatsApp ("Export chat" → with media) and point
-`harken` at the resulting `.zip`:
-
-```bash
-# All voice notes in the export
-harken whatsapp "WhatsApp Chat with Maria.zip"
-
-# Only a date range, with the model biased to Portuguese
-harken whatsapp export.zip --from 2026-07-01 --to 2026-07-15 --lang pt
-
-# Also write a merged chat transcript with each transcript inlined
-harken whatsapp export.zip --from 2026-07-01 --to 2026-07-15 --merge --out ./maria-july
-```
-
-Flags: `--out DIR` (default `./<zip-stem>-transcripts`), `--from` / `--to`
-(`YYYY-MM-DD`, inclusive on both ends), `--merge`, plus `--model`, `--lang`,
-`--format`, `--device`, `--force` as in batch mode.
-
-`harken whatsapp` locates the chat log inside the zip, selects only the
-messages carrying an audio attachment within the date range, extracts
-those files to `<out>/audio/`, and transcribes them (same skip/force,
-manifest, and progress behavior as batch mode — it reuses the same batch
-pipeline). With `--merge`, it also writes `<out>/_chat.transcribed.txt`:
-the full original chat, with each transcribed attachment line immediately
-followed by a `    >> [transcript] <text>` line. Everything outside the
-date range, and every non-audio attachment, is left untouched.
-
-Both iOS and Android export formats are auto-detected (per chat, from the
-first message header). Android date order (day-first vs month-first) is
-inferred from the chat itself; when every date is ambiguous (all components
-<= 12), day-first is assumed.
 
 ## Models & hardware
 
@@ -238,11 +218,24 @@ make check   # fmt + clippy + tests + cargo-audit + cargo-machete
 
 Tests never load a real Whisper model — the transcription engine is a
 trait, and the suite runs against a fake, so it is instant and offline.
+Architecture map: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## License
 
-[MIT](LICENSE)
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or
+  <https://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or
+  <https://opensource.org/licenses/MIT>)
+
+at your option.
 
 Bundles [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (MIT) as the
 pinned submodule at `vendor/whisper.cpp`, compiled into the binary — see
 [its license](vendor/whisper.cpp/LICENSE).
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in the work by you, as defined in the Apache-2.0
+license, shall be dual licensed as above, without any additional terms or
+conditions.
