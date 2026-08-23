@@ -20,15 +20,15 @@ use serde_json::{Value, json};
 use zip::ZipArchive;
 
 mod jsonrpc;
+mod tools;
 
 use crate::engine::{Transcriber, TranscriptionResult};
 use crate::whatsapp::{
     Message, extract_attachment, find_attachment_member, find_chat_entry, parse_chat,
     parse_date_arg, select_audio_messages,
 };
-use jsonrpc::{
-    INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, McpError, PARSE_ERROR, Request, err, ok,
-};
+use jsonrpc::{INVALID_REQUEST, METHOD_NOT_FOUND, McpError, PARSE_ERROR, Request, err, ok};
+use tools::{parse_args, success, tool_error, tool_list, tools_call};
 
 /// Version answered to clients requesting a revision we don't know.
 const LATEST_VERSION: &str = "2025-06-18";
@@ -37,12 +37,6 @@ const LATEST_VERSION: &str = "2025-06-18";
 /// identical across all three; newer, handshake-less revisions (2026-07-28+)
 /// are deliberately not implemented until deployed clients require them.
 const SUPPORTED_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TranscribeFileArgs {
-    path: String,
-}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -131,131 +125,7 @@ fn initialize_result(params: Option<&Value>) -> Value {
     })
 }
 
-fn tool_list() -> Value {
-    json!([
-        {
-            "name": "transcribe_file",
-            "title": "Transcribe audio file",
-            "description": "Transcribe a local audio file (opus, ogg, mp3, m4a, wav, flac, \
-                            mp4, webm, ...) fully offline via whisper.cpp. Model and language \
-                            are fixed by the server's --model/--lang flags. Returns the \
-                            transcript text.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string", "description": "Absolute path to the audio file" }
-                },
-                "required": ["path"],
-                "additionalProperties": false
-            }
-        },
-        {
-            "name": "transcribe_whatsapp_export",
-            "title": "Transcribe WhatsApp export voice notes",
-            "description": "Extract and transcribe every voice-note attachment in a WhatsApp \
-                            chat-export .zip (iOS or Android), optionally restricted to an \
-                            inclusive date range. Fully offline. Returns one line per voice \
-                            note, prefixed with date, time and sender.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "zip_path": {
-                        "type": "string",
-                        "description": "Absolute path to the WhatsApp chat-export .zip"
-                    },
-                    "from": {
-                        "type": "string",
-                        "description": "Only messages on/after this date, YYYY-MM-DD (inclusive)",
-                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-                    },
-                    "to": {
-                        "type": "string",
-                        "description": "Only messages on/before this date, YYYY-MM-DD (inclusive)",
-                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-                    }
-                },
-                "required": ["zip_path"],
-                "additionalProperties": false
-            }
-        }
-    ])
-}
-
-fn tools_call(id: Value, params: Option<Value>, transcriber: &mut dyn Transcriber) -> Value {
-    let params = params.unwrap_or(Value::Null);
-    let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
-    let arguments = params
-        .get("arguments")
-        .cloned()
-        .unwrap_or_else(|| json!({}));
-    let outcome = match name {
-        "transcribe_file" => tool_transcribe_file(arguments, transcriber),
-        "transcribe_whatsapp_export" => tool_transcribe_whatsapp_export(arguments, transcriber),
-        _ => Err(McpError {
-            code: INVALID_PARAMS,
-            message: format!("Unknown tool: {name}"),
-        }),
-    };
-    match outcome {
-        Ok(result) => ok(id, result),
-        Err(e) => err(id, e.code, e.message),
-    }
-}
-
-fn parse_args<T: serde::de::DeserializeOwned>(arguments: Value) -> Result<T, McpError> {
-    serde_json::from_value(arguments).map_err(|e| McpError {
-        code: INVALID_PARAMS,
-        message: format!("Invalid params: {e}"),
-    })
-}
-
-/// Success result: the transcript as the text block for the model, the full
-/// record as structuredContent. The spec's SHOULD of mirroring
-/// structuredContent into the text block is deliberately not followed — the
-/// text block's consumer is the LLM, which wants the transcript, not JSON.
-fn success(text: String, structured: Value) -> Value {
-    json!({
-        "content": [{ "type": "text", "text": text }],
-        "isError": false,
-        "structuredContent": structured,
-    })
-}
-
-/// Tool execution failure — a result, not a JSON-RPC error, per spec.
-fn tool_error(message: String) -> Value {
-    json!({
-        "content": [{ "type": "text", "text": message }],
-        "isError": true,
-    })
-}
-
-/// Same shape as the json writer's output (writers::JsonOutput).
-fn structured_result(result: &TranscriptionResult) -> Value {
-    json!({
-        "source": result.source.display().to_string(),
-        "language": result.language,
-        "duration": result.duration,
-        "text": result.text,
-        "segments": result
-            .segments
-            .iter()
-            .map(|s| json!({ "start": s.start, "end": s.end, "text": s.text }))
-            .collect::<Vec<_>>(),
-    })
-}
-
-fn tool_transcribe_file(
-    arguments: Value,
-    transcriber: &mut dyn Transcriber,
-) -> Result<Value, McpError> {
-    let args: TranscribeFileArgs = parse_args(arguments)?;
-    Ok(match transcriber.transcribe(Path::new(&args.path)) {
-        Ok(result) => success(result.text.clone(), structured_result(&result)),
-        Err(e) => tool_error(e.to_string()),
-    })
-}
-
-fn tool_transcribe_whatsapp_export(
+pub(crate) fn tool_transcribe_whatsapp_export(
     arguments: Value,
     transcriber: &mut dyn Transcriber,
 ) -> Result<Value, McpError> {
