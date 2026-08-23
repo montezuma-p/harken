@@ -195,3 +195,71 @@ fn the_era_is_per_request_and_not_remembered() {
     assert!(replies[0]["result"]["tools"].is_array());
     assert!(replies[1]["result"]["tools"].is_array());
 }
+
+// --- server/discover ---------------------------------------------------------
+
+#[test]
+fn discover_returns_versions_capabilities_and_cache_hints() {
+    let replies = drive(&[modern_request(1, "server/discover", json!({}))]);
+
+    let r = &replies[0]["result"];
+    assert_eq!(r["resultType"], "complete");
+    assert_eq!(r["supportedVersions"], json!(["2026-07-28"]));
+    assert!(r["capabilities"]["tools"].is_object());
+    assert!(r["instructions"].as_str().unwrap().contains("offline"));
+    assert!(
+        r["ttlMs"].as_i64().is_some_and(|t| t >= 0),
+        "ttlMs must be a non-negative integer"
+    );
+    assert_eq!(r["cacheScope"], "public");
+    assert_eq!(
+        r["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+        "harken"
+    );
+    assert!(
+        r["_meta"]["io.modelcontextprotocol/serverInfo"]["version"]
+            .as_str()
+            .is_some()
+    );
+}
+
+#[test]
+fn discover_does_not_advertise_the_handshake_revisions() {
+    // A client that picked 2025-06-18 here and then sent it as
+    // _meta.protocolVersion would be contradicting itself. The handshake stays
+    // an undeclared affordance.
+    let replies = drive(&[modern_request(1, "server/discover", json!({}))]);
+
+    let versions = replies[0]["result"]["supportedVersions"].to_string();
+    assert!(!versions.contains("2025-06-18"));
+    assert!(!versions.contains("2024-11-05"));
+}
+
+#[test]
+fn discover_without_per_request_meta_is_an_error_not_a_result() {
+    // The stdio backward-compatibility probe: a dual-era client sends
+    // server/discover first and falls back to initialize on *any* error, so
+    // what matters is that this is not answered with a DiscoverResult.
+    let replies = drive(&[request(1, "server/discover", json!({}))]);
+
+    assert!(replies[0].get("result").is_none());
+    assert_eq!(replies[0]["error"]["code"], -32602);
+}
+
+#[test]
+fn the_legacy_handshake_still_works_after_a_failed_probe() {
+    // The full dual-era client flow: probe, fall back, then use the server.
+    let replies = drive(&[
+        request(1, "server/discover", json!({})),
+        request(
+            2,
+            "initialize",
+            json!({ "protocolVersion": "2025-06-18", "capabilities": {} }),
+        ),
+        request(3, "tools/list", json!({})),
+    ]);
+
+    assert_eq!(replies[0]["error"]["code"], -32602);
+    assert_eq!(replies[1]["result"]["protocolVersion"], "2025-06-18");
+    assert_eq!(replies[2]["result"]["tools"].as_array().unwrap().len(), 2);
+}

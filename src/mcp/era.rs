@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 
 use super::jsonrpc::{INVALID_PARAMS, McpError};
 
-const META_PROTOCOL_VERSION: &str = "io.modelcontextprotocol/protocolVersion";
+pub(crate) const META_PROTOCOL_VERSION: &str = "io.modelcontextprotocol/protocolVersion";
 const META_CLIENT_CAPABILITIES: &str = "io.modelcontextprotocol/clientCapabilities";
 
 /// A modern request naming a revision this server does not speak. Spec-defined
@@ -35,6 +35,12 @@ pub(crate) const LEGACY_LATEST: &str = "2025-06-18";
 /// undeclared backward-compatibility affordance, which is how the stdio
 /// transport's own backward-compatibility section frames it.
 pub(crate) const LEGACY_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
+
+/// Natural-language guidance for the model, returned by both handshakes.
+const INSTRUCTIONS: &str = "Fully offline whisper.cpp transcription. Model, language and \
+                            device are fixed by the server's --model/--lang/--device flags.";
+
+const META_SERVER_INFO: &str = "io.modelcontextprotocol/serverInfo";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Era {
@@ -119,7 +125,30 @@ pub(crate) fn initialize_result(params: Option<&Value>) -> Value {
             "title": "harken (offline transcription)",
             "version": env!("CARGO_PKG_VERSION"),
         },
-        "instructions": "Fully offline whisper.cpp transcription. Model, language and \
-                         device are fixed by the server's --model/--lang/--device flags.",
+        "instructions": INSTRUCTIONS,
+    })
+}
+
+fn server_info() -> Value {
+    json!({ "name": "harken", "version": env!("CARGO_PKG_VERSION") })
+}
+
+/// The 2026-07-28 replacement for the handshake. Servers MUST implement it, and
+/// on stdio it doubles as the backward-compatibility probe: a dual-era client
+/// sends it first, and answering it is what identifies this server as modern.
+///
+/// supportedVersions lists only the modern revisions — see LEGACY_VERSIONS for
+/// why the handshake ones are deliberately absent.
+pub(crate) fn discover_result() -> Value {
+    json!({
+        "resultType": "complete",
+        "supportedVersions": MODERN_VERSIONS,
+        "capabilities": { "tools": {} },
+        "instructions": INSTRUCTIONS,
+        // The catalog is a static array, so a long freshness hint is honest,
+        // and it does not vary by caller, so a shared cache may hold it.
+        "ttlMs": 3_600_000,
+        "cacheScope": "public",
+        "_meta": { (META_SERVER_INFO): server_info() },
     })
 }

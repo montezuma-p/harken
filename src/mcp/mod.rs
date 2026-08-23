@@ -22,7 +22,9 @@ mod whatsapp_tool;
 
 use crate::engine::Transcriber;
 use era::Era;
-use jsonrpc::{INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR, Request, err, err_from, ok};
+use jsonrpc::{
+    INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR, Request, err, err_from, ok,
+};
 use tools::{tool_list, tools_call};
 
 /// Serve MCP until EOF on `reader`. Never touches process stdin/stdout
@@ -94,11 +96,24 @@ pub(crate) fn handle_line(line: &str, transcriber: &mut dyn Transcriber) -> Opti
         return Some(err_from(id, e));
     }
 
-    Some(match request.method.as_str() {
-        "initialize" => ok(id, era::initialize_result(request.params.as_ref())),
-        "ping" => ok(id, json!({})),
-        "tools/list" => ok(id, json!({ "tools": tool_list() })),
-        "tools/call" => tools_call(id, request.params, transcriber),
-        method => err(id, METHOD_NOT_FOUND, format!("Method not found: {method}")),
+    Some(match (era, request.method.as_str()) {
+        (_, "initialize") => ok(id, era::initialize_result(request.params.as_ref())),
+        // Removed in 2026-07-28, but answering a keepalive costs nothing and a
+        // -32601 on one can make a client tear the connection down.
+        (_, "ping") => ok(id, json!({})),
+        (Era::Modern, "server/discover") => ok(id, era::discover_result()),
+        // server/discover exists only in the modern era, so a probe without the
+        // per-request metadata is malformed rather than unimplemented. Either
+        // answer works for a dual-era client, which must not key its fallback
+        // to a specific code, but naming the missing field helps a modern
+        // client that simply forgot it.
+        (Era::Legacy, "server/discover") => err(
+            id,
+            INVALID_PARAMS,
+            format!("Invalid params: {} is required", era::META_PROTOCOL_VERSION),
+        ),
+        (_, "tools/list") => ok(id, json!({ "tools": tool_list() })),
+        (_, "tools/call") => tools_call(id, request.params, transcriber),
+        (_, method) => err(id, METHOD_NOT_FOUND, format!("Method not found: {method}")),
     })
 }
