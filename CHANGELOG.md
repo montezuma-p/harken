@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Commits now follow Conventional Commits** (`<type>(<scope>): <subject>`,
+  small and atomic), enforced by a new `commits` CI job. The convention is
+  documented in `.github/CONTRIBUTING.md` and `CLAUDE.md`.
+- `src/mcp.rs` became the `src/mcp/` module directory (`jsonrpc`, `tools`,
+  `whatsapp_tool`) ahead of the protocol work. No behavior change.
+- **Breaking (internal API):** `harken::mcp::handle_line` is no longer public.
+  It was an implementation detail of `serve()`, never used outside the crate,
+  and its signature has to change for the protocol work. `serve()` is
+  unaffected and remains the entry point.
+
 ## v0.5.0 — 2026-08-22
 
 - The README and crate metadata now lead with the MCP server: harken's primary

@@ -59,7 +59,7 @@ pub fn serve<R: BufRead, W: Write>(
 
 /// Dispatch one input line to at most one reply. `None` means the line was a
 /// notification (or blank) — JSON-RPC forbids answering anything without an id.
-pub fn handle_line(line: &str, transcriber: &mut dyn Transcriber) -> Option<Value> {
+pub(crate) fn handle_line(line: &str, transcriber: &mut dyn Transcriber) -> Option<Value> {
     let value: Value = match serde_json::from_str(line) {
         Ok(v) => v,
         Err(_) => return Some(err(Value::Null, PARSE_ERROR, "Parse error".to_string())),
