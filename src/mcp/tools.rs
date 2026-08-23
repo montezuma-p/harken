@@ -83,7 +83,7 @@ pub(crate) fn tools_call(
     let outcome = match name {
         "transcribe_file" => tool_transcribe_file(arguments, transcriber),
         "transcribe_whatsapp_export" => {
-            super::tool_transcribe_whatsapp_export(arguments, transcriber)
+            super::whatsapp_tool::tool_transcribe_whatsapp_export(arguments, transcriber)
         }
         _ => Err(McpError {
             code: INVALID_PARAMS,
