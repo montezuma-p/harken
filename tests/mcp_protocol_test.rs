@@ -109,3 +109,89 @@ fn tools_call_with_an_unknown_name_still_names_it() {
             .contains("make_coffee")
     );
 }
+
+// --- era detection -----------------------------------------------------------
+
+/// A 2026-07-28 request: the era is carried per-request in `_meta`, with no
+/// handshake before it.
+fn modern_request(id: u64, method: &str, meta_extra: Value) -> String {
+    let mut meta = json!({
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+    });
+    for (k, v) in meta_extra.as_object().cloned().unwrap_or_default() {
+        meta[k] = v;
+    }
+    request(id, method, json!({ "_meta": meta }))
+}
+
+fn drive(frames: &[String]) -> Vec<Value> {
+    let mut input = Vec::new();
+    for f in frames {
+        input.extend_from_slice(f.as_bytes());
+        input.push(b'\n');
+    }
+    run_session_bytes(&input, &mut FakeEngine::new(None))
+}
+
+#[test]
+fn modern_request_with_unsupported_version_is_32022() {
+    let frame = request(
+        1,
+        "tools/list",
+        json!({ "_meta": {
+            "io.modelcontextprotocol/protocolVersion": "2025-11-25",
+            "io.modelcontextprotocol/clientCapabilities": {},
+        }}),
+    );
+
+    let replies = drive(&[frame]);
+
+    assert_eq!(replies[0]["error"]["code"], -32022);
+    assert_eq!(
+        replies[0]["error"]["data"]["supported"],
+        json!(["2026-07-28"]),
+        "the error must tell the client what we do speak"
+    );
+    assert!(replies[0].get("result").is_none());
+}
+
+#[test]
+fn modern_request_missing_client_capabilities_is_32602() {
+    // protocolVersion present makes this a modern request; capabilities are
+    // required on every one of them, so its absence is malformed params.
+    let frame = request(
+        1,
+        "tools/list",
+        json!({ "_meta": {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        }}),
+    );
+
+    let replies = drive(&[frame]);
+
+    assert_eq!(replies[0]["error"]["code"], -32602);
+}
+
+#[test]
+fn a_modern_tools_list_is_served() {
+    let replies = drive(&[modern_request(1, "tools/list", json!({}))]);
+
+    let tools = replies[0]["result"]["tools"].as_array().expect("tools");
+    assert_eq!(tools.len(), 2);
+}
+
+#[test]
+fn the_era_is_per_request_and_not_remembered() {
+    // A modern frame, then a legacy one on the same session. The legacy frame
+    // must not inherit anything from the modern one — that is the whole point
+    // of the stateless model.
+    let replies = drive(&[
+        modern_request(1, "tools/list", json!({})),
+        request(2, "tools/list", json!({})),
+    ]);
+
+    assert_eq!(replies.len(), 2);
+    assert!(replies[0]["result"]["tools"].is_array());
+    assert!(replies[1]["result"]["tools"].is_array());
+}

@@ -95,6 +95,7 @@ pub(crate) fn tools_call(
         _ => Err(McpError {
             code: INVALID_PARAMS,
             message: format!("Unknown tool: {name}"),
+            data: None,
         }),
     };
     match outcome {
@@ -107,6 +108,7 @@ pub(crate) fn parse_args<T: serde::de::DeserializeOwned>(arguments: Value) -> Re
     serde_json::from_value(arguments).map_err(|e| McpError {
         code: INVALID_PARAMS,
         message: format!("Invalid params: {e}"),
+        data: None,
     })
 }
 

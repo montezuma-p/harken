@@ -15,21 +15,15 @@ use std::io::{BufRead, Write};
 
 use serde_json::{Value, json};
 
+mod era;
 mod jsonrpc;
 mod tools;
 mod whatsapp_tool;
 
 use crate::engine::Transcriber;
-use jsonrpc::{INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR, Request, err, ok};
+use era::Era;
+use jsonrpc::{INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR, Request, err, err_from, ok};
 use tools::{tool_list, tools_call};
-
-/// Version answered to clients requesting a revision we don't know.
-const LATEST_VERSION: &str = "2025-06-18";
-
-/// Handshake revisions this server speaks. The tools-only surface is
-/// identical across all three; newer, handshake-less revisions (2026-07-28+)
-/// are deliberately not implemented until deployed clients require them.
-const SUPPORTED_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 
 /// Serve MCP until EOF on `reader`. Never touches process stdin/stdout
 /// itself: main() passes the real locked handles, tests pass in-memory
@@ -91,36 +85,20 @@ pub(crate) fn handle_line(line: &str, transcriber: &mut dyn Transcriber) -> Opti
     }
     let id = request.id?;
 
+    // Stateless: the era is re-derived per request and nothing is remembered
+    // between them.
+    let era = era::detect(request.params.as_ref());
+    if era == Era::Modern
+        && let Err(e) = era::modern_preflight(request.params.as_ref())
+    {
+        return Some(err_from(id, e));
+    }
+
     Some(match request.method.as_str() {
-        "initialize" => ok(id, initialize_result(request.params.as_ref())),
+        "initialize" => ok(id, era::initialize_result(request.params.as_ref())),
         "ping" => ok(id, json!({})),
         "tools/list" => ok(id, json!({ "tools": tool_list() })),
         "tools/call" => tools_call(id, request.params, transcriber),
         method => err(id, METHOD_NOT_FOUND, format!("Method not found: {method}")),
-    })
-}
-
-fn initialize_result(params: Option<&Value>) -> Value {
-    let requested = params
-        .and_then(|p| p.get("protocolVersion"))
-        .and_then(|v| v.as_str())
-        .unwrap_or(LATEST_VERSION);
-    // Spec: echo a supported requested version, otherwise answer with ours —
-    // disconnecting on mismatch is the client's decision, never an error.
-    let version = if SUPPORTED_VERSIONS.contains(&requested) {
-        requested
-    } else {
-        LATEST_VERSION
-    };
-    json!({
-        "protocolVersion": version,
-        "capabilities": { "tools": {} },
-        "serverInfo": {
-            "name": "harken",
-            "title": "harken (offline transcription)",
-            "version": env!("CARGO_PKG_VERSION"),
-        },
-        "instructions": "Fully offline whisper.cpp transcription. Model, language and \
-                         device are fixed by the server's --model/--lang/--device flags.",
     })
 }

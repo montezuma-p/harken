@@ -37,6 +37,9 @@ pub(crate) struct Request {
 pub(crate) struct McpError {
     pub(crate) code: i64,
     pub(crate) message: String,
+    /// Spec-defined codes may carry structured detail — -32022 lists the
+    /// versions the server does speak. Plain JSON-RPC faults leave it None.
+    pub(crate) data: Option<Value>,
 }
 
 pub(crate) fn ok(id: Value, result: Value) -> Value {
@@ -45,4 +48,12 @@ pub(crate) fn ok(id: Value, result: Value) -> Value {
 
 pub(crate) fn err(id: Value, code: i64, message: String) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
+}
+
+pub(crate) fn err_from(id: Value, e: McpError) -> Value {
+    let mut error = json!({ "code": e.code, "message": e.message });
+    if let Some(data) = e.data {
+        error["data"] = data;
+    }
+    json!({ "jsonrpc": "2.0", "id": id, "error": error })
 }
