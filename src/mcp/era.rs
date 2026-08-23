@@ -42,6 +42,12 @@ const INSTRUCTIONS: &str = "Fully offline whisper.cpp transcription. Model, lang
 
 const META_SERVER_INFO: &str = "io.modelcontextprotocol/serverInfo";
 
+/// Freshness hint for the tool catalog and for discover. Both describe a
+/// surface that is a static array in this binary, so an hour is honest rather
+/// than optimistic; a client that caches for it saves a round-trip per session
+/// and keeps its upstream prompt cache stable.
+const CATALOG_TTL_MS: u64 = 3_600_000;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Era {
     /// `initialize` handshake, 2025-06-18 and older.
@@ -164,6 +170,20 @@ pub(crate) fn decorate_reply(era: Era, mut reply: Value) -> Value {
     reply
 }
 
+/// Marks a list result cacheable. 2026-07-28 requires both fields on every
+/// result from tools/list, prompts/list, resources/list and resources/read.
+///
+/// `cacheScope` is public because harken's catalog does not vary by caller:
+/// there is no auth, and model and language are fixed per server instance, so
+/// two callers of one process always see the same two tools.
+pub(crate) fn cacheable(mut result: Value) -> Value {
+    if let Some(obj) = result.as_object_mut() {
+        obj.insert("ttlMs".to_string(), json!(CATALOG_TTL_MS));
+        obj.insert("cacheScope".to_string(), json!("public"));
+    }
+    result
+}
+
 /// The 2026-07-28 replacement for the handshake. Servers MUST implement it, and
 /// on stdio it doubles as the backward-compatibility probe: a dual-era client
 /// sends it first, and answering it is what identifies this server as modern.
@@ -178,7 +198,7 @@ pub(crate) fn discover_result() -> Value {
         "instructions": INSTRUCTIONS,
         // The catalog is a static array, so a long freshness hint is honest,
         // and it does not vary by caller, so a shared cache may hold it.
-        "ttlMs": 3_600_000,
+        "ttlMs": CATALOG_TTL_MS,
         "cacheScope": "public",
         "_meta": { (META_SERVER_INFO): server_info() },
     })

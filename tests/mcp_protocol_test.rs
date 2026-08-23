@@ -374,3 +374,18 @@ fn discover_keeps_its_own_result_type_and_server_info() {
         "serverInfo should not be duplicated under a second key"
     );
 }
+
+// --- cache hints -------------------------------------------------------------
+
+#[test]
+fn a_modern_tools_list_carries_ttl_and_cache_scope() {
+    let replies = drive(&[modern_request(1, "tools/list", json!({}))]);
+
+    let r = &replies[0]["result"];
+    assert!(
+        r["ttlMs"].as_u64().is_some(),
+        "ttlMs must be a non-negative integer, got {:?}",
+        r["ttlMs"]
+    );
+    assert_eq!(r["cacheScope"], "public");
+}

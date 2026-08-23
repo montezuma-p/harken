@@ -122,7 +122,8 @@ pub(crate) fn handle_line(line: &str, transcriber: &mut dyn Transcriber) -> Opti
             INVALID_PARAMS,
             format!("Invalid params: {} is required", era::META_PROTOCOL_VERSION),
         ),
-        (_, "tools/list") => ok(id, json!({ "tools": tool_list() })),
+        (Era::Modern, "tools/list") => ok(id, era::cacheable(json!({ "tools": tool_list() }))),
+        (Era::Legacy, "tools/list") => ok(id, json!({ "tools": tool_list() })),
         (_, "tools/call") => tools_call(id, request.params, transcriber),
         (_, method) => err(id, METHOD_NOT_FOUND, format!("Method not found: {method}")),
     };
