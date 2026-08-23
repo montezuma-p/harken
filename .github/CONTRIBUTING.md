@@ -38,6 +38,38 @@ catch FFI mistakes:
 cargo test --test ffi_smoke_test -- --ignored
 ```
 
+## Commits
+
+Subjects follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+<type>(<scope>): <subject>
+```
+
+Types are the canonical set, so changelog tooling parses this history with no
+custom config: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `build`, `ci`,
+`chore`. Append `!` for a breaking change.
+
+Scopes name the module or surface touched: `mcp`, `engine`, `ffi`, `audio`,
+`model`, `batch`, `whatsapp`, `writers`, `cli`, `ggml`, `registry`, `skill`,
+`release`, `bench`. Omit the scope only when a change genuinely spans the repo.
+
+Subjects are imperative, lowercase after the colon, with no trailing period, and
+at most 72 characters including the prefix. A CI job checks all of this, so a
+malformed subject fails the PR rather than landing.
+
+Keep commits **small and atomic** — one reviewable change each, every one
+leaving `make check` green. Small commits do not mean thin messages: the body is
+where you explain *why* and name the tradeoff, in prose wrapped at about 76
+columns. Say what you actually verified, and cite `CLAUDE.md` or
+`docs/ARCHITECTURE.md` when a commit records a rule there.
+
+One interaction worth calling out: the rule below about mirroring CLI changes
+into `SKILL.md` and `README.md` means those edits ride in the *same* commit as
+the behavior they document — a behavior and its documentation are one atomic
+unit. A standalone `docs(...)` commit is for documentation not tied to a code
+change.
+
 ## Ground rules
 
 - **The integration tests in `tests/` are the behavior spec.** A behavior

@@ -37,6 +37,23 @@ notes, roadmap, ADRs — never commit it).
   trait; tests use `FakeEngine` (`tests/common/mod.rs`). Never write a test
   that downloads a model, loads a real whisper context, or touches the network.
 
+## Commits
+
+Conventional Commits, small and atomic: `<type>(<scope>): <subject>`. Types are
+the canonical set only (`feat` `fix` `perf` `refactor` `test` `docs` `build`
+`ci` `chore`); scopes are the module touched (`mcp`, `engine`, `ffi`, `audio`,
+`model`, `batch`, `whatsapp`, `writers`, `cli`, `ggml`, `registry`, `skill`,
+`release`, `bench`). Imperative, lowercase after the colon, no trailing period,
+≤72 chars. Enforced by `.github/workflows/commits.yml` — its own workflow
+because `ci.yml` has a `paths-ignore` that would skip a docs-only PR.
+
+History before v0.5.0 uses imperative prose subjects and larger commits; don't
+match it. Do match its **bodies** — prose wrapped at ~76 columns explaining why
+and naming the tradeoff, the test-count delta, and what was actually verified.
+Docs for a change ride in that change's commit (see the mirroring rule under
+Skill / plugin); a standalone `docs(...)` commit is only for documentation with
+no code behind it.
+
 ## Toolchain
 
 - **Edition 2024, MSRV 1.88** (`rust-version` in `Cargo.toml`). The floor is
