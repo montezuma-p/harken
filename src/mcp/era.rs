@@ -133,6 +133,37 @@ fn server_info() -> Value {
     json!({ "name": "harken", "version": env!("CARGO_PKG_VERSION") })
 }
 
+/// Applied to every reply on its way out.
+///
+/// A modern result gains `resultType` — required on every result in 2026-07-28
+/// — and the server identity, which servers SHOULD report on each result since
+/// there is no handshake to carry it. Errors are not results and pass through;
+/// so does everything legacy, which is what keeps the ported behavior spec in
+/// tests/mcp_test.rs byte-identical. `or_insert` rather than `insert`, so a
+/// result that already set either field (discover does) keeps its own.
+pub(crate) fn decorate_reply(era: Era, mut reply: Value) -> Value {
+    if era != Era::Modern {
+        return reply;
+    }
+    if let Some(result) = reply.get_mut("result").and_then(|r| r.as_object_mut()) {
+        result
+            .entry("resultType")
+            .or_insert_with(|| json!("complete"));
+        match result.get_mut("_meta").and_then(|m| m.as_object_mut()) {
+            Some(meta) => {
+                meta.entry(META_SERVER_INFO).or_insert_with(server_info);
+            }
+            None => {
+                result.insert(
+                    "_meta".to_string(),
+                    json!({ (META_SERVER_INFO): server_info() }),
+                );
+            }
+        }
+    }
+    reply
+}
+
 /// The 2026-07-28 replacement for the handshake. Servers MUST implement it, and
 /// on stdio it doubles as the backward-compatibility probe: a dual-era client
 /// sends it first, and answering it is what identifies this server as modern.

@@ -303,3 +303,74 @@ fn initialize_without_meta_is_still_served() {
 
     assert_eq!(replies[0]["result"]["protocolVersion"], "2024-11-05");
 }
+
+// --- modern result decoration ------------------------------------------------
+
+#[test]
+fn modern_results_carry_result_type_and_server_info() {
+    let replies = drive(&[
+        modern_request(1, "tools/list", json!({})),
+        modern_request(2, "ping", json!({})),
+    ]);
+
+    for reply in &replies {
+        assert_eq!(reply["result"]["resultType"], "complete");
+        assert_eq!(
+            reply["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+            "harken"
+        );
+    }
+}
+
+#[test]
+fn a_modern_tool_result_carries_result_type() {
+    let dir = tempfile::tempdir().unwrap();
+    let audio = dir.path().join("note.opus");
+    std::fs::write(&audio, b"not really audio").unwrap();
+
+    let frame = request(
+        1,
+        "tools/call",
+        json!({
+            "name": "transcribe_file",
+            "arguments": { "path": audio.to_str().unwrap() },
+            "_meta": {
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                "io.modelcontextprotocol/clientCapabilities": {},
+            }
+        }),
+    );
+
+    let replies = drive(&[frame]);
+
+    assert_eq!(replies[0]["result"]["resultType"], "complete");
+    assert_eq!(replies[0]["result"]["isError"], false);
+    assert_eq!(
+        replies[0]["result"]["structuredContent"]["text"],
+        "Hello world."
+    );
+}
+
+#[test]
+fn modern_errors_are_not_decorated() {
+    // resultType belongs to results. An error object must stay an error object.
+    let replies = drive(&[modern_request(1, "resources/list", json!({}))]);
+
+    assert_eq!(replies[0]["error"]["code"], -32601);
+    assert!(replies[0].get("result").is_none());
+    assert!(replies[0]["error"].get("resultType").is_none());
+}
+
+#[test]
+fn discover_keeps_its_own_result_type_and_server_info() {
+    // decorate_reply must not clobber a result that already set them.
+    let replies = drive(&[modern_request(1, "server/discover", json!({}))]);
+
+    assert_eq!(replies[0]["result"]["resultType"], "complete");
+    let meta = &replies[0]["result"]["_meta"];
+    assert_eq!(
+        meta.as_object().unwrap().len(),
+        1,
+        "serverInfo should not be duplicated under a second key"
+    );
+}

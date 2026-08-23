@@ -96,7 +96,7 @@ pub(crate) fn handle_line(line: &str, transcriber: &mut dyn Transcriber) -> Opti
         return Some(err_from(id, e));
     }
 
-    Some(match (era, request.method.as_str()) {
+    let reply = match (era, request.method.as_str()) {
         (Era::Legacy, "initialize") => ok(id, era::initialize_result(request.params.as_ref())),
         // A request that declares a modern protocol version and then asks for
         // the handshake that revision removed is contradicting itself. Serving
@@ -125,5 +125,7 @@ pub(crate) fn handle_line(line: &str, transcriber: &mut dyn Transcriber) -> Opti
         (_, "tools/list") => ok(id, json!({ "tools": tool_list() })),
         (_, "tools/call") => tools_call(id, request.params, transcriber),
         (_, method) => err(id, METHOD_NOT_FOUND, format!("Method not found: {method}")),
-    })
+    };
+    // One place, so no dispatch arm can be forgotten.
+    Some(era::decorate_reply(era, reply))
 }
