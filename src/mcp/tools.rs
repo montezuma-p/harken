@@ -75,7 +75,14 @@ pub(crate) fn tools_call(
     transcriber: &mut dyn Transcriber,
 ) -> Value {
     let params = params.unwrap_or(Value::Null);
-    let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    // A call with no name is malformed params, not a call to a tool named "".
+    let Some(name) = params.get("name").and_then(|v| v.as_str()) else {
+        return err(
+            id,
+            INVALID_PARAMS,
+            "Invalid params: missing tool name".to_string(),
+        );
+    };
     let arguments = params
         .get("arguments")
         .cloned()

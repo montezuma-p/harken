@@ -73,3 +73,39 @@ fn a_final_frame_without_a_trailing_newline_is_served() {
     assert_eq!(replies.len(), 1);
     assert_eq!(replies[0]["id"], 1);
 }
+
+// --- tools/call params -------------------------------------------------------
+
+#[test]
+fn tools_call_without_a_name_is_invalid_params() {
+    // Previously the missing name defaulted to "" and produced the nonsense
+    // message `Unknown tool: `, which tells a client nothing about the fault.
+    let mut input = request(1, "tools/call", json!({ "arguments": {} })).into_bytes();
+    input.push(b'\n');
+
+    let replies = run_session_bytes(&input, &mut FakeEngine::new(None));
+
+    assert_eq!(replies.len(), 1);
+    assert_eq!(replies[0]["error"]["code"], -32602);
+    let message = replies[0]["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains("missing tool name"),
+        "message should name the fault, got: {message}"
+    );
+}
+
+#[test]
+fn tools_call_with_an_unknown_name_still_names_it() {
+    let mut input = request(1, "tools/call", json!({ "name": "make_coffee" })).into_bytes();
+    input.push(b'\n');
+
+    let replies = run_session_bytes(&input, &mut FakeEngine::new(None));
+
+    assert_eq!(replies[0]["error"]["code"], -32602);
+    assert!(
+        replies[0]["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("make_coffee")
+    );
+}
