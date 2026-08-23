@@ -3,7 +3,7 @@
 Rust crate, single binary. Transcription engine is whisper.cpp (via direct FFI
 bindings in this repo); all audio decoding happens in-process. Ported from a Python
 implementation (faster-whisper/CTranslate2) in v0.3.0; the Python test suite
-was carried over as the behavior spec (88 tests in `tests/`, all offline).
+was carried over as the behavior spec, now 137 tests in `tests/`, all offline.
 
 ## Flow
 
@@ -40,8 +40,16 @@ MCP mode (`harken mcp`):
 
 ```
 mcp::serve (JSON-RPC 2.0 over stdio, newline-delimited JSON, one engine per session)
-  ├─ initialize | tools/list | ping      (protocol plumbing, version 2025-06-18)
-  └─ tools/call
+  └─ mcp::handle_line → era::detect(_meta)      no state kept between requests
+       ├─ Legacy  (initialize handshake, 2025-06-18 and older)
+       │    initialize | ping | tools/list | tools/call
+       └─ Modern  (per-request _meta, 2026-07-28)
+            server/discover | ping | tools/list | tools/call
+            + preflight: -32022 unknown version, -32602 missing _meta field
+            + every result gains resultType and _meta.serverInfo
+            + tools/list gains ttlMs and cacheScope
+
+  tools/call, both eras:
        ├─ transcribe_file               → engine.transcribe, transcript as content
        └─ transcribe_whatsapp_export    → same zip/parse/select helpers as
             whatsapp mode, attachments extracted to a per-call temp dir,
@@ -153,22 +161,83 @@ creation is deferred until the chat log has been read, so a bad zip exits 2
 without leaving an empty `<out>/audio/` behind — locating the entry is not
 enough, since reading it can still fail on a corrupt or unsupported member.
 
-**`src/mcp.rs`** — MCP server mode (`harken mcp`): JSON-RPC 2.0 over stdio,
+**`src/mcp/`** — MCP server mode (`harken mcp`): JSON-RPC 2.0 over stdio,
 hand-rolled on serde_json — no SDK, no async runtime, zero new dependencies.
-Framing is newline-delimited compact JSON, flushed per message; protocol
-version 2025-06-18 (older handshake revisions echoed, unknown ones answered
-with ours — disconnecting is the client's decision). `serve` is generic over
-`BufRead`/`Write` and takes `&mut dyn Transcriber` — the same testability seam
-as the batch pipeline, driven in tests by in-memory buffers and `FakeEngine`.
-One engine lives for the whole session, so the lazy context load is reused
-across tool calls. Tool handlers call `transcriber.transcribe()` and the pub
-`whatsapp` helpers directly instead of reusing `run_batch_mode`/`whatsapp::run`:
-those return exit codes, drop errors on stderr, and panic on IO — fatal in a
-long-lived server. Two error channels per the MCP spec: protocol errors are
-JSON-RPC `error` objects; everything after a well-formed request (missing file,
-bad zip, failed transcription) is a result with `isError: true`. The WhatsApp
-tool extracts attachments to a per-call temp dir and returns transcripts as
-content — it writes no output files.
+`mod.rs` is framing and dispatch and the only I/O; `jsonrpc.rs` the envelope,
+response builders and error codes; `era.rs` the protocol eras; `tools.rs` the
+catalog; `whatsapp_tool.rs` the zip work. It was one 434-line file until the
+2026-07-28 work roughly doubled the protocol code. The split is also the escape
+hatch: if hand-tracking the spec ever stops paying, the protocol layer is what
+an SDK (`rmcp`) would replace, and only a layer that is not interleaved with the
+tool handlers can be swapped cleanly.
+
+`serve` is generic over `BufRead`/`Write` and takes `&mut dyn Transcriber` — the
+same testability seam as the batch pipeline, driven in tests by in-memory
+buffers and `FakeEngine`. It reads bytes rather than using `BufRead::lines()`,
+which yields `Err` on non-UTF-8 and would end the session; a bad frame gets
+-32700 and the loop continues. One engine lives for the whole session, so the
+lazy context load is reused across tool calls.
+
+**Two eras, discriminated per request.** 2026-07-28 removed the
+`initialize`/`notifications/initialized` handshake: a request now carries its
+protocol version and client capabilities in `_meta`, and the server infers
+nothing from earlier traffic. Deployed clients still speak the handshake, so
+both are served, and the discriminator is the presence of
+`_meta.protocolVersion` — which the revision makes required precisely so a
+stateless server can branch on it. Nothing is remembered between requests.
+
+| method | Legacy | Modern |
+|---|---|---|
+| `initialize` | `InitializeResult` | `-32601` — removed in the revision |
+| `notifications/initialized` | dropped | dropped |
+| `ping` | `{}` | answered too — see below |
+| `server/discover` | `-32602` | `DiscoverResult` |
+| `tools/list` | `{tools}` | `+ resultType, ttlMs, cacheScope, _meta.serverInfo` |
+| `tools/call` | as before | `+ resultType, _meta.serverInfo` |
+| `notifications/cancelled` | dropped | dropped |
+
+Three decisions worth not relitigating:
+
+- **New fields are era-gated, not emitted unconditionally.** Sending
+  `resultType` to a 2025-06-18 client is probably harmless, but gating keeps the
+  25 ported tests in `tests/mcp_test.rs` passing byte-for-byte with no conscious
+  change, which `CLAUDE.md`'s inviolable rules make the deciding factor. It
+  costs one `bool`. `tests/mcp_protocol_test.rs` locks the separation with a
+  recursive absence check; verified by mutation.
+- **`server/discover` advertises only the modern revisions.** Listing
+  2025-06-18 there would invite a client to select it and send it back as
+  `_meta.protocolVersion`, which is a contradiction. The handshake stays an
+  undeclared backward-compatibility affordance, as the stdio transport's own
+  backward-compatibility section frames it. On stdio `server/discover` is also
+  the probe a dual-era client sends first: answering it is what identifies this
+  server as modern, and a probe without `_meta` gets -32602 naming the missing
+  field (a dual-era client must not key its fallback to a specific code, so
+  either error works, and naming the field helps the case that is a real bug).
+- **`ping` is answered in both eras** although 2026-07-28 removed it. A -32601
+  on a keepalive can make a client tear the connection down, and answering costs
+  nothing.
+
+Tool handlers call `transcriber.transcribe()` and the pub `whatsapp` helpers
+directly instead of reusing `run_batch_mode`/`whatsapp::run`: those return exit
+codes, drop errors on stderr, and panic on IO — fatal in a long-lived server.
+Two error channels per the MCP spec: protocol errors are JSON-RPC `error`
+objects; everything after a well-formed request (missing file, bad zip, failed
+transcription) is a result with `isError: true`. The WhatsApp tool extracts
+attachments to a per-call temp dir and returns transcripts as content — it
+writes no output files.
+
+Error codes are named in `jsonrpc.rs` because the revision partitions the
+server-error range: `-32000..-32019` is legacy and off-limits to new code, and
+`-32020..-32099` is reserved for the spec and must not carry an undefined code.
+`every_emitted_error_code_is_spec_defined` walks every fault the server can
+produce and holds it to that.
+
+**Not implemented, deliberately:** progress notifications, cancellation, the
+`io.modelcontextprotocol/tasks` extension, `subscriptions/listen`, resources,
+prompts, sampling, roots, elicitation, and MRTR. Transcription still runs inline
+on the read loop, so a long call blocks the server and cannot be cancelled —
+that needs a worker thread and the two null callbacks in `ffi.rs`, and is
+tracked as an issue rather than guessed at here.
 
 **`src/writers.rs`** — output serialization. txt is `text + "\n"`, srt is the
 standard numbered cue blocks with `HH:MM:SS,mmm` timestamps (millisecond

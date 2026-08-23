@@ -75,8 +75,9 @@ change.
 - **The integration tests in `tests/` are the behavior spec.** A behavior
   change must consciously change the corresponding test — never adjust a test
   just to make code pass.
-- **stdout stays clean.** Transcripts only. All progress, logs, and summaries
-  go to stderr.
+- **stdout stays clean.** Transcripts only; all progress, logs, and summaries
+  go to stderr. The one exception is `harken mcp`, where stdout *is* the
+  protocol channel and carries nothing but JSON-RPC frames.
 - **Exit codes:** `0` ok (skips are not failures), `1` at least one
   transcription failed, `2` input error.
 - **Tests stay offline.** Never add a test that downloads a model, loads a real
