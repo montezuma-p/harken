@@ -35,16 +35,34 @@ const SUPPORTED_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 /// itself: main() passes the real locked handles, tests pass in-memory
 /// buffers and a `FakeEngine`.
 pub fn serve<R: BufRead, W: Write>(
-    reader: R,
+    mut reader: R,
     writer: &mut W,
     transcriber: &mut dyn Transcriber,
 ) -> std::io::Result<()> {
-    for line in reader.lines() {
-        let line = line?;
-        if line.trim().is_empty() {
-            continue;
+    // Bytes rather than BufRead::lines(): that iterator yields Err on a line
+    // that is not UTF-8, and propagating it would end the session. A client
+    // that emits one bad byte gets a parse error and stays connected.
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        if reader.read_until(b'\n', &mut buf)? == 0 {
+            return Ok(());
         }
-        if let Some(reply) = handle_line(&line, transcriber) {
+        // Same trimming BufRead::lines() does: the delimiter, then one CR.
+        if buf.last() == Some(&b'\n') {
+            buf.pop();
+            if buf.last() == Some(&b'\r') {
+                buf.pop();
+            }
+        }
+
+        let reply = match std::str::from_utf8(&buf) {
+            Ok(line) if line.trim().is_empty() => continue,
+            Ok(line) => handle_line(line, transcriber),
+            Err(_) => Some(err(Value::Null, PARSE_ERROR, "Parse error".to_string())),
+        };
+
+        if let Some(reply) = reply {
             writeln!(
                 writer,
                 "{}",
@@ -54,7 +72,6 @@ pub fn serve<R: BufRead, W: Write>(
             writer.flush()?;
         }
     }
-    Ok(())
 }
 
 /// Dispatch one input line to at most one reply. `None` means the line was a
