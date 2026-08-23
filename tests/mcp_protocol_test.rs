@@ -389,3 +389,62 @@ fn a_modern_tools_list_carries_ttl_and_cache_scope() {
     );
     assert_eq!(r["cacheScope"], "public");
 }
+
+// --- era separation ----------------------------------------------------------
+
+/// Collect every object key appearing anywhere in a value.
+fn all_keys(v: &Value, out: &mut Vec<String>) {
+    match v {
+        Value::Object(map) => {
+            for (k, child) in map {
+                out.push(k.clone());
+                all_keys(child, out);
+            }
+        }
+        Value::Array(items) => items.iter().for_each(|i| all_keys(i, out)),
+        _ => {}
+    }
+}
+
+#[test]
+fn legacy_replies_never_carry_a_modern_only_field() {
+    // The correctness crux of serving two eras from one dispatcher: a field
+    // introduced in 2026-07-28 leaking into a 2025-06-18 reply gives a deployed
+    // client a result shape it has never seen. Checked across every legacy
+    // method rather than one, and recursively, so a nested leak also fails.
+    let dir = tempfile::tempdir().unwrap();
+    let audio = dir.path().join("note.opus");
+    std::fs::write(&audio, b"not really audio").unwrap();
+
+    let replies = drive(&[
+        request(
+            1,
+            "initialize",
+            json!({ "protocolVersion": "2025-06-18", "capabilities": {} }),
+        ),
+        request(2, "ping", json!({})),
+        request(3, "tools/list", json!({})),
+        request(
+            4,
+            "tools/call",
+            json!({
+                "name": "transcribe_file",
+                "arguments": { "path": audio.to_str().unwrap() }
+            }),
+        ),
+        request(5, "does/not/exist", json!({})),
+    ]);
+
+    assert_eq!(replies.len(), 5);
+    const MODERN_ONLY: &[&str] = &["resultType", "ttlMs", "cacheScope", "_meta"];
+    for reply in &replies {
+        let mut keys = Vec::new();
+        all_keys(reply, &mut keys);
+        for field in MODERN_ONLY {
+            assert!(
+                !keys.iter().any(|k| k == field),
+                "legacy reply leaked the modern-only field {field}: {reply}"
+            );
+        }
+    }
+}
