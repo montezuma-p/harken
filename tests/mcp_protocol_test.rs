@@ -448,3 +448,110 @@ fn legacy_replies_never_carry_a_modern_only_field() {
         }
     }
 }
+
+// --- error codes -------------------------------------------------------------
+
+#[test]
+fn every_emitted_error_code_is_spec_defined() {
+    // 2026-07-28 partitions the JSON-RPC server-error range: -32000..-32019 is
+    // legacy and new implementations should not use it at all, and
+    // -32020..-32099 is reserved for the spec, which forbids emitting a code
+    // from it that the spec has not defined. This walks every fault the server
+    // can produce and holds it to that.
+    const ALLOWED: &[i64] = &[
+        -32700, // parse error
+        -32600, // invalid request
+        -32601, // method not found
+        -32602, // invalid params
+        -32022, // unsupported protocol version
+    ];
+
+    let mut frames: Vec<String> = vec![
+        // Malformed JSON.
+        "{not json".to_string(),
+        // Valid JSON, not a request.
+        json!({ "id": 1, "no_method": true }).to_string(),
+        // Wrong protocol.
+        json!({ "jsonrpc": "1.0", "id": 2, "method": "ping" }).to_string(),
+        // Unknown method.
+        request(3, "resources/list", json!({})),
+        // tools/call with no name.
+        request(4, "tools/call", json!({ "arguments": {} })),
+        // tools/call naming a tool that does not exist.
+        request(5, "tools/call", json!({ "name": "make_coffee" })),
+        // tools/call with an argument the schema forbids.
+        request(
+            6,
+            "tools/call",
+            json!({ "name": "transcribe_file", "arguments": { "nope": 1 } }),
+        ),
+        // Modern probe without the required per-request metadata.
+        request(7, "server/discover", json!({})),
+        // Handshake under a modern envelope.
+        modern_request(8, "initialize", json!({})),
+        // Unknown modern method.
+        modern_request(9, "prompts/list", json!({})),
+    ];
+    // Modern envelope naming a revision we do not speak.
+    frames.push(request(
+        10,
+        "tools/list",
+        json!({ "_meta": {
+            "io.modelcontextprotocol/protocolVersion": "1999-01-01",
+            "io.modelcontextprotocol/clientCapabilities": {},
+        }}),
+    ));
+    // Modern envelope missing the required capabilities field.
+    frames.push(request(
+        11,
+        "tools/list",
+        json!({ "_meta": {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        }}),
+    ));
+
+    let mut input = Vec::new();
+    for f in &frames {
+        input.extend_from_slice(f.as_bytes());
+        input.push(b'\n');
+    }
+    // One frame that is not UTF-8 at all.
+    input.extend_from_slice(b"{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"");
+    input.push(0xff);
+    input.extend_from_slice(b"\"}\n");
+
+    let replies = run_session_bytes(&input, &mut FakeEngine::new(None));
+    assert_eq!(replies.len(), frames.len() + 1, "every frame is answered");
+
+    let mut seen = Vec::new();
+    for reply in &replies {
+        let code = reply["error"]["code"]
+            .as_i64()
+            .unwrap_or_else(|| panic!("expected an error, got {reply}"));
+        assert!(
+            ALLOWED.contains(&code),
+            "emitted an error code the spec does not define: {code} in {reply}"
+        );
+        // Belt and braces on the reserved range, so a future code added without
+        // updating ALLOWED still trips something.
+        if (-32099..=-32020).contains(&code) {
+            assert_eq!(
+                code, -32022,
+                "reserved-range code {code} is not spec-defined"
+            );
+        }
+        assert!(
+            !(-32019..=-32000).contains(&code),
+            "code {code} is in the legacy sub-range new implementations must avoid"
+        );
+        seen.push(code);
+    }
+
+    // The table is only meaningful if it actually exercises the range.
+    for expected in ALLOWED {
+        assert!(
+            seen.contains(expected),
+            "no frame in this table provokes {expected}"
+        );
+    }
+}
