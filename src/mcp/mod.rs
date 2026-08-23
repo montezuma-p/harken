@@ -19,10 +19,15 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use zip::ZipArchive;
 
+mod jsonrpc;
+
 use crate::engine::{Transcriber, TranscriptionResult};
 use crate::whatsapp::{
     Message, extract_attachment, find_attachment_member, find_chat_entry, parse_chat,
     parse_date_arg, select_audio_messages,
+};
+use jsonrpc::{
+    INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, McpError, PARSE_ERROR, Request, err, ok,
 };
 
 /// Version answered to clients requesting a revision we don't know.
@@ -32,19 +37,6 @@ const LATEST_VERSION: &str = "2025-06-18";
 /// identical across all three; newer, handshake-less revisions (2026-07-28+)
 /// are deliberately not implemented until deployed clients require them.
 const SUPPORTED_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
-
-#[derive(Deserialize)]
-struct Request {
-    #[serde(default)]
-    jsonrpc: Option<String>,
-    // Absent id => notification; explicit null id => request answered with
-    // null id. serde's Option covers only the first, so the raw Value is kept.
-    #[serde(default)]
-    id: Option<Value>,
-    method: String,
-    #[serde(default)]
-    params: Option<Value>,
-}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -60,13 +52,6 @@ struct WhatsappExportArgs {
     from: Option<String>,
     #[serde(default)]
     to: Option<String>,
-}
-
-/// A JSON-RPC protocol error (unknown tool, invalid params). Tool *execution*
-/// failures never take this path — they are results with `isError: true`.
-struct McpError {
-    code: i64,
-    message: String,
 }
 
 /// Serve MCP until EOF on `reader`. Never touches process stdin/stdout
@@ -100,15 +85,15 @@ pub fn serve<R: BufRead, W: Write>(
 pub fn handle_line(line: &str, transcriber: &mut dyn Transcriber) -> Option<Value> {
     let value: Value = match serde_json::from_str(line) {
         Ok(v) => v,
-        Err(_) => return Some(err(Value::Null, -32700, "Parse error".to_string())),
+        Err(_) => return Some(err(Value::Null, PARSE_ERROR, "Parse error".to_string())),
     };
     let id_hint = value.get("id").cloned().unwrap_or(Value::Null);
     let request: Request = match serde_json::from_value(value) {
         Ok(r) => r,
-        Err(_) => return Some(err(id_hint, -32600, "Invalid Request".to_string())),
+        Err(_) => return Some(err(id_hint, INVALID_REQUEST, "Invalid Request".to_string())),
     };
     if request.jsonrpc.as_deref() != Some("2.0") {
-        return Some(err(id_hint, -32600, "Invalid Request".to_string()));
+        return Some(err(id_hint, INVALID_REQUEST, "Invalid Request".to_string()));
     }
     let id = request.id?;
 
@@ -117,16 +102,8 @@ pub fn handle_line(line: &str, transcriber: &mut dyn Transcriber) -> Option<Valu
         "ping" => ok(id, json!({})),
         "tools/list" => ok(id, json!({ "tools": tool_list() })),
         "tools/call" => tools_call(id, request.params, transcriber),
-        method => err(id, -32601, format!("Method not found: {method}")),
+        method => err(id, METHOD_NOT_FOUND, format!("Method not found: {method}")),
     })
-}
-
-fn ok(id: Value, result: Value) -> Value {
-    json!({ "jsonrpc": "2.0", "id": id, "result": result })
-}
-
-fn err(id: Value, code: i64, message: String) -> Value {
-    json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
 }
 
 fn initialize_result(params: Option<&Value>) -> Value {
@@ -215,7 +192,7 @@ fn tools_call(id: Value, params: Option<Value>, transcriber: &mut dyn Transcribe
         "transcribe_file" => tool_transcribe_file(arguments, transcriber),
         "transcribe_whatsapp_export" => tool_transcribe_whatsapp_export(arguments, transcriber),
         _ => Err(McpError {
-            code: -32602,
+            code: INVALID_PARAMS,
             message: format!("Unknown tool: {name}"),
         }),
     };
@@ -227,7 +204,7 @@ fn tools_call(id: Value, params: Option<Value>, transcriber: &mut dyn Transcribe
 
 fn parse_args<T: serde::de::DeserializeOwned>(arguments: Value) -> Result<T, McpError> {
     serde_json::from_value(arguments).map_err(|e| McpError {
-        code: -32602,
+        code: INVALID_PARAMS,
         message: format!("Invalid params: {e}"),
     })
 }
