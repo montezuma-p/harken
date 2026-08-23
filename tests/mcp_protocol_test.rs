@@ -263,3 +263,43 @@ fn the_legacy_handshake_still_works_after_a_failed_probe() {
     assert_eq!(replies[1]["result"]["protocolVersion"], "2025-06-18");
     assert_eq!(replies[2]["result"]["tools"].as_array().unwrap().len(), 2);
 }
+
+// --- the handshake is legacy-only --------------------------------------------
+
+#[test]
+fn initialize_under_a_modern_meta_is_32601() {
+    let frame = request(
+        1,
+        "initialize",
+        json!({
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "_meta": {
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                "io.modelcontextprotocol/clientCapabilities": {},
+            }
+        }),
+    );
+
+    let replies = drive(&[frame]);
+
+    assert_eq!(replies[0]["error"]["code"], -32601);
+    assert!(
+        replies[0]["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("server/discover"),
+        "the error should point at the replacement"
+    );
+}
+
+#[test]
+fn initialize_without_meta_is_still_served() {
+    let replies = drive(&[request(
+        1,
+        "initialize",
+        json!({ "protocolVersion": "2024-11-05", "capabilities": {} }),
+    )]);
+
+    assert_eq!(replies[0]["result"]["protocolVersion"], "2024-11-05");
+}

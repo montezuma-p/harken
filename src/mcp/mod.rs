@@ -97,7 +97,17 @@ pub(crate) fn handle_line(line: &str, transcriber: &mut dyn Transcriber) -> Opti
     }
 
     Some(match (era, request.method.as_str()) {
-        (_, "initialize") => ok(id, era::initialize_result(request.params.as_ref())),
+        (Era::Legacy, "initialize") => ok(id, era::initialize_result(request.params.as_ref())),
+        // A request that declares a modern protocol version and then asks for
+        // the handshake that revision removed is contradicting itself. Serving
+        // it would leave the client believing in a negotiated state this server
+        // does not keep.
+        (Era::Modern, "initialize") => err(
+            id,
+            METHOD_NOT_FOUND,
+            "Method not found: initialize was removed in 2026-07-28; use server/discover"
+                .to_string(),
+        ),
         // Removed in 2026-07-28, but answering a keepalive costs nothing and a
         // -32601 on one can make a client tear the connection down.
         (_, "ping") => ok(id, json!({})),
