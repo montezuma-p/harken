@@ -40,7 +40,10 @@ jobs:
           types='feat|fix|perf|refactor|test|docs|build|ci|chore'
 
           # Merge commits from the base branch are not ours to validate.
-          git log --no-merges --format=%s "$BASE_SHA..HEAD" > subjects.txt
+          # Author travels with the subject, separated by US (0x1f) — the one
+          # byte a commit subject cannot contain, so no name or subject can
+          # split the field for us.
+          git log --no-merges --format='%an%x1f%s' "$BASE_SHA..HEAD" > subjects.txt
 
           if [ ! -s subjects.txt ]; then
             echo "No non-merge commits to check."
@@ -48,14 +51,30 @@ jobs:
           fi
 
           status=0
-          while IFS= read -r subject; do
+          while IFS= read -r line; do
+            author=${line%%$'\x1f'*}
+            subject=${line#*$'\x1f'}
             [ -n "$subject" ] || continue
             problem=''
+
+            # Dependabot and friends write their own subjects and cannot be
+            # asked to shorten them: the generated form spends 60 characters on
+            # "build: bump  from  to  in the cargo group across 1 directory"
+            # alone, leaving 12 for the crate name and both versions. `cc`
+            # fits at exactly 72; `serde` does not. Holding a bot to the limit
+            # means a red PR every month that no human can turn green, so the
+            # length rule is waived for them. Shape is not: the type and scope
+            # come from commit-message.prefix in dependabot.yml, which is
+            # config we control.
+            bot=''
+            case "$author" in
+              *'[bot]') bot=1 ;;
+            esac
 
             if ! printf '%s' "$subject" \
               | grep -qE "^($types)(\([a-z][a-z0-9-]*\))?!?: .+"; then
               problem="expected <type>(<scope>): <subject> with type one of ${types//|/, }"
-            elif [ "${#subject}" -gt 72 ]; then
+            elif [ -z "$bot" ] && [ "${#subject}" -gt 72 ]; then
               problem="${#subject} chars, limit is 72"
             elif printf '%s' "$subject" | grep -qE '\.$'; then
               problem='trailing period'
@@ -68,6 +87,9 @@ jobs:
               echo "FAIL  $subject"
               echo "      $problem"
               status=1
+            elif [ -n "$bot" ] && [ "${#subject}" -gt 72 ]; then
+              echo "ok    $subject"
+              echo "      ${#subject} chars — over 72, waived for $author"
             else
               echo "ok    $subject"
             fi

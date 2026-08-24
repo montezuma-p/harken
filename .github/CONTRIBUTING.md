@@ -58,6 +58,15 @@ Subjects are imperative, lowercase after the colon, with no trailing period, and
 at most 72 characters including the prefix. A CI job checks all of this, so a
 malformed subject fails the PR rather than landing.
 
+The 72-character limit is waived for bot authors (any name ending in `[bot]`),
+and only that rule — the type and scope still have to be right. Dependabot
+writes its own subjects and cannot be asked to shorten them: `build: bump  from
+ to  in the cargo group across 1 directory` spends 60 characters before the
+crate name, leaving 12 for the name and both versions. `cc` lands at exactly 72
+and `serde` does not, so holding the bot to the limit would mean a red PR every
+month that nobody can turn green. Its type and scope come from
+`commit-message.prefix` in `.github/dependabot.yml`, which is config we own.
+
 Keep commits **small and atomic** — one reviewable change each, every one
 leaving `make check` green. Small commits do not mean thin messages: the body is
 where you explain *why* and name the tradeoff, in prose wrapped at about 76

@@ -46,7 +46,11 @@ the canonical set only (`feat` `fix` `perf` `refactor` `test` `docs` `build`
 `model`, `batch`, `whatsapp`, `writers`, `cli`, `ggml`, `registry`, `skill`,
 `release`, `bench`). Imperative, lowercase after the colon, no trailing period,
 ≤72 chars. Enforced by `.github/workflows/commits.yml` — its own workflow
-because `ci.yml` has a `paths-ignore` that would skip a docs-only PR.
+because `ci.yml` has a `paths-ignore` that would skip a docs-only PR. The length
+rule alone is waived for `*[bot]` authors: Dependabot's generated subject spends
+60 chars before the crate name, so all but the shortest names overshoot 72 and
+no human can fix it. Type and scope still apply, and for cargo they come from
+`commit-message.prefix` in `.github/dependabot.yml`.
 
 History before v0.5.0 uses imperative prose subjects and larger commits; don't
 match it. Do match its **bodies** — prose wrapped at ~76 columns explaining why
