@@ -47,5 +47,9 @@ updates:
       cargo:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    # "build" rather than "deps": .github/workflows/commits.yml only accepts the
+    # canonical Conventional Commits types, and a dependency bump is a change to
+    # what the build consumes. Widening the type set instead would cost the
+    # off-the-shelf parse that commitlint/git-cliff/release-please give for free.
     commit-message:
-      prefix: "deps"
+      prefix: "build"
