@@ -1,0 +1,76 @@
+name: Commits
+
+# Commit subjects follow Conventional Commits — see .github/CONTRIBUTING.md for
+# the type and scope vocabulary.
+#
+# Deliberately its own workflow rather than a job in ci.yml: that workflow has a
+# paths-ignore for **.md, docs/** and scripts/**, so a docs-only pull request
+# skips it entirely — and a commit subject is exactly as wrong on a docs-only
+# branch as on a code one.
+#
+# Validation is a plain `run:` step rather than an off-the-shelf action. Every
+# action here is pinned by SHA to keep the supply chain auditable (see
+# .github/dependabot.yml), and a regex over `git log` adds nothing to pin. A CI
+# check also cannot be skipped with `git commit --no-verify`, which is what
+# rules out a local commit-msg hook.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  subjects:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # The default shallow clone has no merge base to diff against.
+          fetch-depth: 0
+      - name: Check commit subjects
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # Types are closed: the canonical Conventional Commits set, so
+          # commitlint/git-cliff/release-please parse this history with no
+          # custom config. Scopes are only shape-checked — the canonical list
+          # lives in CONTRIBUTING.md, because pinning it here would mean
+          # editing a workflow to add a module.
+          types='feat|fix|perf|refactor|test|docs|build|ci|chore'
+
+          # Merge commits from the base branch are not ours to validate.
+          git log --no-merges --format=%s "$BASE_SHA..HEAD" > subjects.txt
+
+          if [ ! -s subjects.txt ]; then
+            echo "No non-merge commits to check."
+            exit 0
+          fi
+
+          status=0
+          while IFS= read -r subject; do
+            [ -n "$subject" ] || continue
+            problem=''
+
+            if ! printf '%s' "$subject" \
+              | grep -qE "^($types)(\([a-z][a-z0-9-]*\))?!?: .+"; then
+              problem="expected <type>(<scope>): <subject> with type one of ${types//|/, }"
+            elif [ "${#subject}" -gt 72 ]; then
+              problem="${#subject} chars, limit is 72"
+            elif printf '%s' "$subject" | grep -qE '\.$'; then
+              problem='trailing period'
+            elif ! printf '%s' "$subject" | sed -E "s/^($types)(\([a-z0-9-]*\))?!?: //" \
+              | grep -qE '^[a-z]'; then
+              problem='subject must start lowercase and be imperative'
+            fi
+
+            if [ -n "$problem" ]; then
+              echo "FAIL  $subject"
+              echo "      $problem"
+              status=1
+            else
+              echo "ok    $subject"
+            fi
+          done < subjects.txt
+
+          exit "$status"

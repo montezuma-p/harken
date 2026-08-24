@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+- **Commits now follow Conventional Commits** (`<type>(<scope>): <subject>`,
+  small and atomic), enforced by a new `commits` CI job. The convention is
+  documented in `.github/CONTRIBUTING.md` and `CLAUDE.md`.
+- **The MCP server now speaks revision 2026-07-28** alongside the `initialize`
+  handshake of 2025-06-18 and older. The current revision is stateless: it
+  dropped the handshake, so each request carries its protocol version and client
+  capabilities in `_meta`. Both eras are served from one dispatcher,
+  discriminated per request with no state kept. New: `server/discover` (which is
+  also the stdio backward-compatibility probe), `-32022` for an unsupported
+  version, `resultType` and `_meta.serverInfo` on modern results, and
+  `ttlMs`/`cacheScope` on `tools/list`. Replies to legacy clients are
+  byte-identical to before, which a test enforces.
+- **Fixed:** a single non-UTF-8 byte on stdin ended the whole MCP session. It
+  now gets `-32700` like any other unparseable frame and the server stays up.
+- **Fixed:** a `tools/call` with no `name` reported `Unknown tool: ` instead of
+  naming the actual fault.
+- `src/mcp.rs` became the `src/mcp/` module directory (`jsonrpc`, `era`, `tools`,
+  `whatsapp_tool`). No behavior change from the split itself.
+- **Breaking (internal API):** `harken::mcp::handle_line` is no longer public.
+  It was an implementation detail of `serve()`, never used outside the crate,
+  and its signature has to change for the protocol work. `serve()` is
+  unaffected and remains the entry point.
+
 ## v0.5.0 — 2026-08-22
 
 - The README and crate metadata now lead with the MCP server: harken's primary

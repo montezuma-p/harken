@@ -48,6 +48,10 @@ That is the whole setup. Two tools appear — `transcribe_file` and
 Claude Desktop, Cursor, Windsurf. Hand the agent an `.opus`, an `.mp3`, a
 whole WhatsApp chat-export zip; it transcribes locally and reads the text.
 
+The server speaks the current MCP revision, **2026-07-28** (stateless, with
+`server/discover`), and still answers the `initialize` handshake of 2025-06-18
+and older — so it works with clients on either side of that change.
+
 Model, language and device are fixed per server instance (`harken mcp --model
 medium --lang auto`) with the same defaults as the CLI (`small`, `pt`, `cpu`) —
 run two entries for two languages. A first call with an uncached model

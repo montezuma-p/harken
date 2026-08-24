@@ -10,11 +10,11 @@ notes, roadmap, ADRs — never commit it).
 ## Commands
 
 - `make check` — full local CI: `fmt` + `clippy -D warnings` + `test` + `cargo audit` + `cargo machete`. Run before claiming anything done.
-- `cargo test` — 115 integration tests, instant and offline.
+- `cargo test` — 137 integration tests, instant and offline.
 - `cargo test --test ffi_smoke_test -- --ignored` — opt-in smoke test that loads
   a real whisper context through `src/ffi.rs` (skips if `ggml-tiny.bin` is not
   already cached; never runs in CI). Run it after touching `src/ffi.rs`,
-  `build.rs`, or the submodule pin — the 115 tests above use `FakeEngine` and
+  `build.rs`, or the submodule pin — the 137 tests above use `FakeEngine` and
   cannot catch an FFI mistake.
 - `cargo build` — needs a C++ toolchain (whisper.cpp is compiled in) and the
   `vendor/whisper.cpp` submodule checked out (`git submodule update --init
@@ -24,8 +24,9 @@ notes, roadmap, ADRs — never commit it).
 
 ## Inviolable rules
 
-- **The 115 tests in `tests/` are the behavior SPEC** (the original 88 were
-  ported from the Python suite's 81; the MCP server added 27). A behavior
+- **The 137 tests in `tests/` are the behavior SPEC** (the original 88 were
+  ported from the Python suite's 81; the MCP server added 27, and 2026-07-28
+  compliance added 22 more in `tests/mcp_protocol_test.rs`). A behavior
   change requires consciously changing the corresponding test — never "fix" a
   test to make code pass.
 - **stdout stays clean.** All progress, logs, and summaries go to stderr. The
@@ -36,6 +37,23 @@ notes, roadmap, ADRs — never commit it).
 - **Tests stay offline.** The batch pipeline is generic over the `Transcriber`
   trait; tests use `FakeEngine` (`tests/common/mod.rs`). Never write a test
   that downloads a model, loads a real whisper context, or touches the network.
+
+## Commits
+
+Conventional Commits, small and atomic: `<type>(<scope>): <subject>`. Types are
+the canonical set only (`feat` `fix` `perf` `refactor` `test` `docs` `build`
+`ci` `chore`); scopes are the module touched (`mcp`, `engine`, `ffi`, `audio`,
+`model`, `batch`, `whatsapp`, `writers`, `cli`, `ggml`, `registry`, `skill`,
+`release`, `bench`). Imperative, lowercase after the colon, no trailing period,
+≤72 chars. Enforced by `.github/workflows/commits.yml` — its own workflow
+because `ci.yml` has a `paths-ignore` that would skip a docs-only PR.
+
+History before v0.5.0 uses imperative prose subjects and larger commits; don't
+match it. Do match its **bodies** — prose wrapped at ~76 columns explaining why
+and naming the tradeoff, the test-count delta, and what was actually verified.
+Docs for a change ride in that change's commit (see the mirroring rule under
+Skill / plugin); a standalone `docs(...)` commit is only for documentation with
+no code behind it.
 
 ## Toolchain
 
