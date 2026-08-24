@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.6.0 — 2026-08-24
 
 - **Commits now follow Conventional Commits** (`<type>(<scope>): <subject>`,
   small and atomic), enforced by a new `commits` CI job. The convention is
@@ -20,6 +20,10 @@
   naming the actual fault.
 - `src/mcp.rs` became the `src/mcp/` module directory (`jsonrpc`, `era`, `tools`,
   `whatsapp_tool`). No behavior change from the split itself.
+- Dependencies: `zip` 2 → 8 and `indicatif` 0.17 → 0.18. The indicatif bump
+  drops `number_prefix`, clearing RUSTSEC-2025-0119 — `cargo audit` now reports
+  one allowed advisory instead of two. `ureq` stays on 2 pending the
+  `Response::header` / `into_reader` migration (#31).
 - **Breaking (internal API):** `harken::mcp::handle_line` is no longer public.
   It was an implementation detail of `serve()`, never used outside the crate,
   and its signature has to change for the protocol work. `serve()` is
