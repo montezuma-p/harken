@@ -132,6 +132,28 @@ published on crates.io (`cargo publish` is manual, run it on the same commit
 as the `v*` tag). `Cargo.toml` `version` and `.claude-plugin/plugin.json`
 `version` must bump together.
 
+**Which number to bump.** Cargo's `0.y.z` rules, applied to the *whole*
+product — the crate's public API, the CLI surface, and the MCP surface:
+
+- **Bump `y` (0.7 → 0.8)** when anything a consumer depends on breaks: a `pub`
+  item removed or renamed, a **field added to a `pub` struct whose fields are
+  all `pub`** (it breaks literal construction — this is what made v0.8.0 a
+  minor), a required trait method added, a CLI flag removed or its default
+  changed, a tool removed from the MCP catalog or an argument made required.
+- **Bump `z` (0.7.0 → 0.7.1)** for anything purely additive or internal: a new
+  flag, a new tool, a new *optional* field in a result, bug fixes, dependency
+  bumps, performance work.
+
+The cadence has been fast (0.5.0 through 0.8.0 in four days) and that is fine —
+each bump was forced by this rule, not chosen. If a release feels like a jump,
+the question to ask is "what broke?", and the answer should be nameable in one
+line. When it is not, it is a patch.
+
+A release that only changes what an *agent* reads — tool descriptions, result
+text, `tools/list` payload shape — still ships, because the published binary is
+what clients talk to: docs on `main` describing behaviour the released binary
+does not have is the situation v0.7.0 was cut to end.
+
 ## Skill / plugin
 
 `.claude/skills/transcribe-audio/SKILL.md` and `.claude-plugin/` (plugin.json,
