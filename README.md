@@ -210,9 +210,11 @@ The chosen model is downloaded once, on first use, to
 `~/.cache/harken/models`. Subsequent runs reuse the cached model with no
 network access.
 
-CPU is the safe default everywhere. Passing `--device` with anything other
-than `cpu` enables GPU offload when the binary was built with a GPU backend
-(Metal/CUDA/Vulkan — via the vendored whisper.cpp build).
+CPU is the safe default everywhere — and today it is also the only backend:
+no shipped binary compiles GPU support, so passing `--device` with anything
+other than `cpu` prints a warning and runs on CPU. GPU offload
+(Metal/CUDA/Vulkan) would require building from source with a modified
+`build.rs`; none of the release targets do.
 
 ## Development
 

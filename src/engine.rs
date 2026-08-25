@@ -69,6 +69,21 @@ pub fn assemble_result(
     }
 }
 
+/// The warning owed to a user who asked for a GPU device, or None for cpu.
+///
+/// build.rs only ever compiles ggml's CPU backend (GGML_USE_CPU), so on
+/// every shipped binary `use_gpu: true` finds no backend to bind and ggml
+/// quietly proceeds on CPU. A warning rather than an error, deliberately:
+/// the run still produces a correct transcript, and erroring would break
+/// scripts that pass --device cuda optimistically.
+pub fn gpu_fallback_warning(device: &str) -> Option<String> {
+    (device != "cpu").then(|| {
+        format!(
+            "no GPU backend compiled into this binary; --device {device} ignored, running on CPU"
+        )
+    })
+}
+
 /// Real engine backed by whisper.cpp via direct FFI. The model is loaded
 /// lazily on the first transcribe() call and reused for the whole batch.
 pub struct WhisperCppEngine {
@@ -105,6 +120,9 @@ unsafe extern "C" fn silent_whisper_log(
 
 impl WhisperCppEngine {
     pub fn new(model: String, device: String, language: Option<String>) -> Self {
+        if let Some(warning) = gpu_fallback_warning(&device) {
+            eprintln!("warning: {warning}");
+        }
         Self {
             model,
             device,
