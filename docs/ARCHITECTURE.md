@@ -84,6 +84,16 @@ whisper.cpp through the raw bindings in **`src/ffi.rs`** (manually mirrored from
 `vendor/whisper.cpp/include/whisper.h`), not through `whisper-rs`.
 `install_logging_hooks()` silences whisper.cpp/ggml's chatty stderr. Whisper
 timestamps arrive in centiseconds and are converted to seconds here.
+Decode parameters deviate from upstream in one deliberate place:
+`best_of = 1` (upstream's greedy default is 5). Since `temperature_inc`
+defaults non-zero, `best_of` governs how many candidates the
+temperature-fallback loop draws when a decode trips the entropy or logprob
+thresholds — so this makes the common case (clean WhatsApp voice notes)
+faster, and the hard case (noisy audio, crosstalk) more likely to emit a
+degraded segment. Consequence worth knowing: with `best_of = 1` at
+temperature > 0 the single draw is already random, so harken has
+non-determinism on temperature-fallback windows — reproducible output is not
+guaranteed on hard audio, independent of threading.
 `--device` other than `cpu` just flips `use_gpu` — actual GPU support depends
 on how the vendored whisper.cpp subtree was compiled for that target.
 
@@ -278,9 +288,13 @@ Behaviors the tests pin down and that are easy to break by accident:
 
 ## Discarded / future
 
-- **No VAD in v0.3.0.** The Python version (faster-whisper) ran Silero VAD
-  before transcription; whisper.cpp does not, so long silences may transcribe
-  slightly differently. Accepted trade-off for the single-binary pitch.
+- **VAD is reachable but off.** whisper.cpp v1.7.6 ships Silero VAD, and the
+  `vad`/`vad_model_path`/`vad_params` fields are already mirrored in
+  `src/ffi.rs` — enabling it is a params assignment away, but it is a real
+  feature, not a flag flip: a second model file to download and cache, and an
+  output change that needs measuring (issue #28 tracks it). Until then long
+  silences may transcribe slightly differently than the Python version
+  (faster-whisper), which ran Silero VAD before transcription.
 - **Direct whisper.cpp vendoring** was chosen for total version control, to
   remove the `whisper-rs` intermediary, and to keep the door open for local
   patches such as revisiting Silero VAD integration later.
