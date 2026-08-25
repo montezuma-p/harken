@@ -90,3 +90,27 @@ fn assemble_result_strips_leading_space_from_segment_text() {
     assert_eq!(result.segments[0].text, "Hello");
     assert_eq!(result.segments[1].text, "world.");
 }
+
+/// No shipped build compiles a GPU backend, so any --device other than cpu
+/// silently runs on CPU; the engine must say so instead of letting the user
+/// believe they got GPU acceleration. A warning rather than an error: the
+/// run still produces a correct transcript.
+#[test]
+fn gpu_device_without_backend_yields_fallback_warning() {
+    let warning = harken::engine::gpu_fallback_warning("cuda").unwrap();
+
+    assert!(warning.contains("no GPU backend"), "got: {warning}");
+    assert!(
+        warning.contains("cuda"),
+        "must name the requested device: {warning}"
+    );
+    assert!(
+        warning.contains("CPU"),
+        "must say what actually runs: {warning}"
+    );
+}
+
+#[test]
+fn cpu_device_yields_no_warning() {
+    assert_eq!(harken::engine::gpu_fallback_warning("cpu"), None);
+}
