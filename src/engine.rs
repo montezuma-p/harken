@@ -142,12 +142,16 @@ impl WhisperCppEngine {
                 ..ffi::WhisperContextParams::default()
             };
 
-            let model_path =
+            let model_cstr =
                 CString::new(model_path.to_str().ok_or("model path is not valid UTF-8")?)?;
             let ctx =
-                unsafe { ffi::whisper_init_from_file_with_params(model_path.as_ptr(), params) };
+                unsafe { ffi::whisper_init_from_file_with_params(model_cstr.as_ptr(), params) };
             if ctx.is_null() {
-                return Err("failed to initialize whisper.cpp context".into());
+                return Err(format!(
+                    "failed to initialize whisper.cpp context from {} — if the file is corrupt, delete it and re-run",
+                    model_path.display()
+                )
+                .into());
             }
             self.ctx = Some(ctx);
         }
