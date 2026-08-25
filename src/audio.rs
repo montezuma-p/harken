@@ -29,25 +29,32 @@ pub fn decode_audio_16k_mono(path: &Path) -> Result<Vec<f32>, EngineError> {
         .map(|e| e.to_lowercase())
         .unwrap_or_default();
 
-    if ext == "opus" {
-        return decode_opus(path);
-    }
-
-    match decode_symphonia(path, &ext) {
-        Ok(samples) => Ok(samples),
-        // .ogg/.oga may carry an opus stream, which symphonia demuxes but
-        // cannot decode — fall back to the libopus path.
-        Err(e) if ext == "ogg" || ext == "oga" => {
-            decode_opus(path).map_err(|opus_err| -> EngineError {
-                format!(
-                    "failed to decode {}: {e}; opus fallback: {opus_err}",
-                    path.display()
-                )
-                .into()
-            })
+    let samples = if ext == "opus" {
+        decode_opus(path)
+    } else {
+        match decode_symphonia(path, &ext) {
+            Ok(samples) => Ok(samples),
+            // .ogg/.oga may carry an opus stream, which symphonia demuxes but
+            // cannot decode — fall back to the libopus path.
+            Err(e) if ext == "ogg" || ext == "oga" => {
+                decode_opus(path).map_err(|opus_err| -> EngineError {
+                    format!(
+                        "failed to decode {}: {e}; opus fallback: {opus_err}",
+                        path.display()
+                    )
+                    .into()
+                })
+            }
+            Err(e) => Err(e),
         }
-        Err(e) => Err(e),
+    }?;
+
+    // "Silence" and "nothing decoded" are not the same outcome: an empty
+    // decode must be an error, not an empty transcript with exit 0.
+    if samples.is_empty() {
+        return Err(format!("{} decoded to zero samples", path.display()).into());
     }
+    Ok(samples)
 }
 
 /// Decode an Ogg Opus file with libopus, directly at 16 kHz.
@@ -137,11 +144,19 @@ fn decode_symphonia(path: &Path, ext: &str) -> Result<Vec<f32>, EngineError> {
 
     let mut mono: Vec<f32> = Vec::new();
     let mut interleaved: Vec<f32> = Vec::new();
+    // Skipping a bad packet is the right recovery for damaged media, but it
+    // has to be counted: a file whose every packet fails must not come out
+    // indistinguishable from one that decoded cleanly (issue #11).
+    let mut skipped: usize = 0;
+    let mut truncated = false;
     loop {
         let packet = match format.next_packet() {
             Ok(Some(packet)) => packet,
             Ok(None) => break,
-            Err(SymphoniaError::ResetRequired) => break,
+            Err(SymphoniaError::ResetRequired) => {
+                truncated = true;
+                break;
+            }
             Err(e) => return Err(format!("demux error: {e}").into()),
         };
         if packet.track_id != track_id {
@@ -149,7 +164,10 @@ fn decode_symphonia(path: &Path, ext: &str) -> Result<Vec<f32>, EngineError> {
         }
         let decoded = match decoder.decode(&packet) {
             Ok(d) => d,
-            Err(SymphoniaError::IoError(_)) | Err(SymphoniaError::DecodeError(_)) => continue,
+            Err(SymphoniaError::IoError(_)) | Err(SymphoniaError::DecodeError(_)) => {
+                skipped += 1;
+                continue;
+            }
             Err(e) => return Err(format!("decode error: {e}").into()),
         };
         let channels = decoded.spec().channels().count();
@@ -163,6 +181,31 @@ fn decode_symphonia(path: &Path, ext: &str) -> Result<Vec<f32>, EngineError> {
                     .map(|frame| frame.iter().sum::<f32>() / channels as f32),
             );
         }
+    }
+
+    if mono.is_empty() && (skipped > 0 || truncated) {
+        return Err(format!(
+            "no audio decoded from {}: {skipped} packet(s) failed to decode{}",
+            path.display(),
+            if truncated {
+                ", decoding stopped early (codec reset required)"
+            } else {
+                ""
+            }
+        )
+        .into());
+    }
+    if skipped > 0 {
+        eprintln!(
+            "warning: {}: skipped {skipped} undecodable packet(s); transcript may have gaps",
+            path.display()
+        );
+    }
+    if truncated {
+        eprintln!(
+            "warning: {}: decoding stopped early (codec reset required); transcript may be truncated",
+            path.display()
+        );
     }
 
     if sample_rate == WHISPER_SAMPLE_RATE {
