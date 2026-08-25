@@ -94,8 +94,10 @@ whisper.cpp through the raw bindings in **`src/ffi.rs`** (manually mirrored from
 `vendor/whisper.cpp/include/whisper.h`), not through `whisper-rs`.
 `install_logging_hooks()` silences whisper.cpp/ggml's chatty stderr. Whisper
 timestamps arrive in centiseconds and are converted to seconds here.
-`--device` other than `cpu` just flips `use_gpu` — actual GPU support depends
-on how the vendored whisper.cpp subtree was compiled for that target.
+`--device` other than `cpu` just flips `use_gpu` — but `build.rs` only ever
+compiles ggml's CPU backend, so on every shipped binary the flag finds no
+backend to bind and ggml proceeds on CPU; `gpu_fallback_warning` says so on
+stderr instead of letting the run masquerade as GPU-accelerated.
 
 **`src/ffi.rs`** — minimal unsafe FFI surface for the subset of whisper.cpp's C
 API that `WhisperCppEngine` actually uses: context/state lifecycle, `whisper_full`,
