@@ -33,6 +33,15 @@ pub struct ServerInfo {
     pub model: String,
     pub lang: String,
     pub device: String,
+    /// The startup warm-up's state, when one is running. `transcribe_status`
+    /// reads it (never blocking on it) so it can tell "no model and nothing
+    /// happening" apart from "the download is already in flight".
+    ///
+    /// `None` rather than a fresh `Warmth` is the honest default: a `Warmth`
+    /// nobody settles reads as Pending forever, so a `ServerInfo` built without
+    /// a warm thread would report a download that does not exist. Only main()
+    /// spawns that thread, so only main() fills this in.
+    pub warm: Option<Warmth>,
 }
 
 impl Default for ServerInfo {
@@ -41,6 +50,7 @@ impl Default for ServerInfo {
             model: "small".to_string(),
             lang: "pt".to_string(),
             device: "cpu".to_string(),
+            warm: None,
         }
     }
 }

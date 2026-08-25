@@ -55,7 +55,9 @@ mcp::serve (JSON-RPC 2.0 over stdio, newline-delimited JSON, one engine per sess
        │    whatsapp mode, attachments extracted to a per-call temp dir,
        │    transcripts returned as content — no files written
        └─ transcribe_status             → model cache state via model::cached_path
-            (pure stat, never the network), language, device, context_loaded
+            (pure stat, never the network) + the warm-up's state read without
+            waiting on it, so "not cached" is told apart from "downloading
+            now, a call will wait for it"; language, device, context_loaded
 
   startup: main() spawns a warm-up thread running model::ensure_downloaded
   (StderrSink: a line per 10%) so the read loop answers initialize/discover/
@@ -63,7 +65,11 @@ mcp::serve (JSON-RPC 2.0 over stdio, newline-delimited JSON, one engine per sess
   holds tool calls until the warm settles. A failed warm-up is logged, and
   the gate lets calls through anyway — the engine retries the download
   inline, so the error surfaces per call as isError: true and the server
-  never dies.
+  never dies. A WarmSettle drop guard settles the state on unwind too, so a
+  panic on that thread cannot leave the gate blocking forever. At EOF the
+  thread is detached rather than joined: shutdown is bounded, at the cost of
+  orphaning the .partial file (inert — only a verified download is ever
+  renamed into place).
 ```
 
 Exit codes everywhere: `0` ok, `1` some transcription failed, `2` input error.

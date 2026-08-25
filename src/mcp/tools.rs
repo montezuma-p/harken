@@ -73,8 +73,11 @@ pub(crate) fn tool_list() -> Value {
                             without transcribing anything: model name, whether the model file \
                             is already cached locally (path and size in bytes) or the first \
                             transcription call would have to download it first (~466 MB for \
-                            the default 'small'), language, device, and whether the whisper \
-                            context is loaded. Never touches the network.",
+                            the default 'small'), the startup warm-up's state ('downloading' \
+                            means a call would wait for a download already in flight rather \
+                            than start one; 'failed' reports the error), language, device, \
+                            and whether the whisper context is loaded. Never touches the \
+                            network.",
             "inputSchema": {
                 "type": "object",
                 "properties": {},
@@ -180,11 +183,35 @@ fn tool_transcribe_file(
 #[serde(deny_unknown_fields)]
 struct StatusArgs {}
 
+/// The startup warm-up as this tool reports it. Derived from `Warmth` without
+/// ever waiting on it — `is_pending`/`failure` both take the lock and return.
+fn warm_state(info: &super::ServerInfo) -> (&'static str, Option<String>) {
+    let Some(warm) = info.warm.as_ref() else {
+        // No warm-up thread in this instance (the plain serve() entry point).
+        return ("idle", None);
+    };
+    if warm.is_pending() {
+        return ("downloading", None);
+    }
+    match warm.failure() {
+        Some(message) => ("failed", Some(message)),
+        None => ("ready", None),
+    }
+}
+
 /// Cache state comes from `model::cached_path`, which is a pure stat — this
 /// tool can never trigger a download, which is what makes it a trustworthy
 /// answer to "will the first call stall?". An invalid --model is reported as
 /// a diagnosis in the result, not a tool failure: the agent asking "can this
 /// server transcribe?" deserves the answer.
+///
+/// The stat alone is not the whole story during startup, though: while the
+/// warm-up thread downloads, the file is not there yet and a stat-only report
+/// would say the first call "will download it" — both halves wrong, since the
+/// download is already running and the call will *wait* on it via the WarmGate.
+/// So the warm state is read alongside the stat (never waited on), which also
+/// gives the one place a failed warm-up becomes visible to a client: until now
+/// it existed only as a stderr line nothing read.
 fn tool_transcribe_status(
     arguments: Value,
     transcriber: &mut dyn Transcriber,
@@ -200,8 +227,11 @@ fn tool_transcribe_status(
         Err(e) => (false, None, None, Some(e)),
     };
     let context_loaded = transcriber.is_loaded();
+    let (warm, warm_error) = warm_state(info);
 
     let text = match (&error, cached) {
+        // An unusable --model outranks everything else: no warm state makes a
+        // typo transcribable.
         (Some(e), _) => format!("model '{}' is unusable: {e}", info.model),
         (None, true) => format!(
             "model {} cached at {} ({} bytes); language {}; device {}; context loaded: {}",
@@ -212,11 +242,22 @@ fn tool_transcribe_status(
             info.device,
             context_loaded,
         ),
-        (None, false) => format!(
-            "model {} is NOT cached: the first transcription call will download it; \
-             language {}; device {}",
-            info.model, info.lang, info.device,
-        ),
+        (None, false) => {
+            let cache_state = match (warm, warm_error.as_deref()) {
+                ("downloading", _) => "is downloading now: a transcription call \
+                                       will wait for it rather than start a second download"
+                    .to_string(),
+                ("failed", Some(e)) => format!(
+                    "is NOT cached and the startup download already failed ({e}): \
+                     a transcription call will retry it"
+                ),
+                _ => "is NOT cached: the first transcription call will download it".to_string(),
+            };
+            format!(
+                "model {} {cache_state}; language {}; device {}",
+                info.model, info.lang, info.device,
+            )
+        }
     };
     Ok(success(
         text,
@@ -228,6 +269,8 @@ fn tool_transcribe_status(
             "path": path,
             "size_bytes": size_bytes,
             "context_loaded": context_loaded,
+            "warm": warm,
+            "warm_error": warm_error,
             "error": error,
         }),
     ))

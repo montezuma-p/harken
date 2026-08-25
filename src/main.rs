@@ -45,6 +45,7 @@ fn main() {
                 model: args.model.clone(),
                 lang: args.lang.clone(),
                 device: args.device.clone(),
+                warm: Some(warmth.clone()),
             };
             let mut engine = WhisperCppEngine::new(
                 args.model.clone(),

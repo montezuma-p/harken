@@ -47,6 +47,7 @@ harken whatsapp "$HOME/Downloads/WhatsApp Chat - X.zip" \
 - If the harken MCP server is connected (`claude mcp add harken -- harken mcp`),
   prefer its tools — `transcribe_file` and `transcribe_whatsapp_export` — over
   the shell invocations above; the CLI remains the fallback. Its
-  `transcribe_status` tool reports the model cache state (whether the first
-  call would download) without transcribing anything.
+  `transcribe_status` tool reports the model cache state without transcribing
+  anything — whether the first call would download, or is already waiting on a
+  startup download in flight.
 - Full docs: [README](https://github.com/montezuma-p/harken#readme).
