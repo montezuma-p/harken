@@ -89,7 +89,9 @@ fn download_model(filename: &str, dest: &Path) -> Result<(), String> {
         .map_err(|e| format!("failed to download {url}: {e}"))?;
 
     let total: u64 = response
-        .header("Content-Length")
+        .headers()
+        .get("Content-Length")
+        .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
     let bar = if total > 0 {
@@ -113,7 +115,7 @@ fn download_model(filename: &str, dest: &Path) -> Result<(), String> {
     let mut out = std::fs::File::create(&tmp)
         .map_err(|e| format!("failed to create {}: {e}", tmp.display()))?;
 
-    let mut reader = response.into_reader();
+    let mut reader = response.into_body().into_reader();
     let mut buf = [0u8; 64 * 1024];
     loop {
         let n = reader
