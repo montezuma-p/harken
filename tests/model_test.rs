@@ -52,3 +52,32 @@ fn guard_commit_moves_partial_into_place() {
     assert!(!partial.exists());
     assert_eq!(fs::read(&dest).unwrap(), b"whole model");
 }
+
+// --- SHA-256 verification (issue #25) ------------------------------------
+
+#[test]
+fn linked_etag_with_quotes_parses_to_hex_digest() {
+    // HF serves: x-linked-etag: "be07e048...c6e1b21" (quoted, 64 hex chars)
+    let digest = harken::model::expected_sha256(
+        "\"be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21\"",
+    );
+
+    assert_eq!(
+        digest.as_deref(),
+        Some("be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21")
+    );
+}
+
+#[test]
+fn non_sha256_etag_is_ignored() {
+    // A weak etag, a short hash, or junk must disable verification rather
+    // than fail the download -- the header is best-effort, not a contract.
+    assert_eq!(harken::model::expected_sha256("W/\"abc123\""), None);
+    assert_eq!(harken::model::expected_sha256("\"deadbeef\""), None);
+    assert_eq!(
+        harken::model::expected_sha256(
+            "\"ZZ07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1bZZ\""
+        ),
+        None
+    );
+}

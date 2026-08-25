@@ -137,13 +137,53 @@ impl Drop for PartialGuard {
     }
 }
 
+/// Extract a SHA-256 hex digest from an ETag-shaped header value.
+///
+/// HuggingFace states an LFS object's SHA-256 in `X-Linked-Etag` as a quoted
+/// 64-char hex string. Anything else — a weak etag, a chunk hash, junk —
+/// returns None and disables verification rather than failing the download:
+/// the header is best-effort, not a contract.
+pub fn expected_sha256(etag: &str) -> Option<String> {
+    let hex = etag.trim().trim_matches('"');
+    (hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+        .then(|| hex.to_ascii_lowercase())
+}
+
 fn download_model(filename: &str, dest: &Path) -> Result<(), String> {
     let url = format!("{HF_BASE_URL}/{filename}");
     eprintln!("downloading model {filename} ...");
 
-    let response = ureq::get(&url)
+    // The SHA-256 lives on the *redirect* response (X-Linked-Etag on the
+    // HF -> CDN 302); following redirects automatically would surface only
+    // the CDN response, whose plain ETag is a different hash. So take the
+    // first hop unfollowed, read the digest, then fetch the Location.
+    let first = ureq::get(&url)
+        .config()
+        .max_redirects(0)
+        .max_redirects_will_error(false)
+        .build()
         .call()
         .map_err(|e| format!("failed to download {url}: {e}"))?;
+
+    let expected = first
+        .headers()
+        .get("X-Linked-Etag")
+        .and_then(|v| v.to_str().ok())
+        .and_then(expected_sha256);
+
+    let response = if first.status().is_redirection() {
+        let location = first
+            .headers()
+            .get("Location")
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| format!("redirect from {url} carried no Location header"))?
+            .to_string();
+        ureq::get(&location)
+            .call()
+            .map_err(|e| format!("failed to download {url}: {e}"))?
+    } else {
+        first
+    };
 
     let total: u64 = response
         .headers()
@@ -175,6 +215,9 @@ fn download_model(filename: &str, dest: &Path) -> Result<(), String> {
     let mut reader = response.into_body().into_reader();
     let mut buf = [0u8; 64 * 1024];
     let mut written: u64 = 0;
+    let mut hasher = expected
+        .as_ref()
+        .map(|_| <sha2::Sha256 as sha2::Digest>::new());
     loop {
         let n = reader
             .read(&mut buf)
@@ -184,6 +227,9 @@ fn download_model(filename: &str, dest: &Path) -> Result<(), String> {
         }
         out.write_all(&buf[..n])
             .map_err(|e| format!("write failed: {e}"))?;
+        if let Some(h) = hasher.as_mut() {
+            sha2::Digest::update(h, &buf[..n]);
+        }
         written += n as u64;
         bar.inc(n as u64);
     }
@@ -200,6 +246,23 @@ fn download_model(filename: &str, dest: &Path) -> Result<(), String> {
         ));
     }
 
+    // The server states its own file's hash, so this catches corruption in
+    // transit and misbehaving mirrors. It is NOT provenance: it cannot
+    // protect against HuggingFace itself, and must not be read as a
+    // supply-chain guard.
+    let verified = match (&expected, hasher) {
+        (Some(expected), Some(h)) => {
+            let computed = format!("{:x}", sha2::Digest::finalize(h));
+            if &computed != expected {
+                return Err(format!(
+                    "download corrupted: SHA-256 {computed} does not match the server-stated {expected} — not caching, re-run to retry"
+                ));
+            }
+            true
+        }
+        _ => false,
+    };
+
     // If another process won the race, keep its file and drop our temp
     // rather than clobbering a good model with an identical one.
     if dest.is_file() {
@@ -207,6 +270,10 @@ fn download_model(filename: &str, dest: &Path) -> Result<(), String> {
     }
 
     guard.commit(dest)?;
-    eprintln!("model saved to {}", dest.display());
+    eprintln!(
+        "model saved to {}{}",
+        dest.display(),
+        if verified { " (SHA-256 verified)" } else { "" }
+    );
     Ok(())
 }
