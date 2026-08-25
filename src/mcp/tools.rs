@@ -19,6 +19,135 @@ struct TranscribeFileArgs {
     path: String,
 }
 
+/// The annotations both transcription tools and the status tool carry.
+///
+/// `readOnlyHint` holds for all three: `transcribe_file` writes nothing,
+/// `transcribe_status` only stats, and `transcribe_whatsapp_export`'s scratch
+/// dir is created and removed inside the call, so no mutation is observable to
+/// the caller. That last one is the claim that could quietly stop being true —
+/// if this tool ever leaves files behind, this hint is the thing to fix first.
+///
+/// `openWorldHint: false` says the domain of operation is closed and
+/// predictable (a fixed model over a local file), not that no socket is ever
+/// opened — the first call on a cold cache does reach HuggingFace, which is
+/// what `transcribe_status` exists to let an agent check beforehand.
+///
+/// `destructiveHint`/`idempotentHint` are deliberately absent: the spec gives
+/// them meaning only when `readOnlyHint` is false, so emitting them would be
+/// noise a client has to ignore.
+fn read_only_annotations() -> Value {
+    json!({ "readOnlyHint": true, "openWorldHint": false })
+}
+
+/// Declared output schema for `transcribe_file`, mirroring `structured_result`.
+fn transcribe_file_output_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "source": { "type": "string", "description": "Path that was transcribed" },
+            "language": { "type": "string", "description": "Language code of the transcript" },
+            "duration": { "type": "number", "description": "Audio duration in seconds" },
+            "text": { "type": "string", "description": "Full transcript" },
+            "segments": {
+                "type": "array",
+                "description": "Timestamped segments, in order",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "start": { "type": "number", "description": "Segment start, seconds" },
+                        "end": { "type": "number", "description": "Segment end, seconds" },
+                        "text": { "type": "string", "description": "Segment transcript" }
+                    },
+                    "required": ["start", "end", "text"],
+                    "additionalProperties": false
+                }
+            }
+        },
+        "required": ["source", "language", "duration", "text", "segments"],
+        "additionalProperties": false
+    })
+}
+
+/// Declared output schema for `transcribe_whatsapp_export`.
+///
+/// `messages[]` entries are heterogeneous on purpose: a transcribed note
+/// carries text/duration/language, a failed one carries `error`, and one whose
+/// attachment is missing from the zip carries `error` too. So `required` covers
+/// only the four fields every entry has.
+fn whatsapp_output_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "total": { "type": "integer", "description": "Voice notes selected" },
+            "transcribed": { "type": "integer", "description": "Successfully transcribed" },
+            "failed": { "type": "integer", "description": "Transcription failures" },
+            "missing": { "type": "integer", "description": "Attachments absent from the zip" },
+            "messages": {
+                "type": "array",
+                "description": "One entry per selected voice note, in chat order",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "date": { "type": "string", "description": "YYYY-MM-DD" },
+                        "time": { "type": "string", "description": "Time as written in the chat" },
+                        "sender": { "type": "string", "description": "Sender name" },
+                        "filename": { "type": "string", "description": "Attachment filename" },
+                        "text": { "type": "string", "description": "Transcript, when it succeeded" },
+                        "duration": { "type": "number", "description": "Audio duration in seconds" },
+                        "language": { "type": "string", "description": "Detected language code" },
+                        "error": {
+                            "type": "string",
+                            "description": "Why this note has no transcript"
+                        }
+                    },
+                    "required": ["date", "time", "sender", "filename"],
+                    "additionalProperties": false
+                }
+            }
+        },
+        "required": ["total", "transcribed", "failed", "missing", "messages"],
+        "additionalProperties": false
+    })
+}
+
+/// Declared output schema for `transcribe_status`.
+fn status_output_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "model": { "type": "string", "description": "The server's fixed --model" },
+            "language": { "type": "string", "description": "The server's fixed --lang" },
+            "device": { "type": "string", "description": "The server's fixed --device" },
+            "cached": { "type": "boolean", "description": "Whether the model file is on disk" },
+            "path": { "type": ["string", "null"], "description": "Cached model path" },
+            "size_bytes": { "type": ["integer", "null"], "description": "Cached model size" },
+            "context_loaded": {
+                "type": "boolean",
+                "description": "Whether the whisper context is already loaded"
+            },
+            "warm": {
+                "type": "string",
+                "enum": ["idle", "downloading", "ready", "failed"],
+                "description": "Startup warm-up state: 'downloading' means a call waits on \
+                                a download already in flight; 'idle' means none is running"
+            },
+            "warm_error": {
+                "type": ["string", "null"],
+                "description": "The warm-up failure, when warm is 'failed'"
+            },
+            "error": {
+                "type": ["string", "null"],
+                "description": "Why the configured model is unusable, if it is"
+            }
+        },
+        "required": [
+            "model", "language", "device", "cached", "path", "size_bytes",
+            "context_loaded", "warm", "warm_error", "error"
+        ],
+        "additionalProperties": false
+    })
+}
+
 pub(crate) fn tool_list() -> Value {
     json!([
         {
@@ -35,7 +164,9 @@ pub(crate) fn tool_list() -> Value {
                 },
                 "required": ["path"],
                 "additionalProperties": false
-            }
+            },
+            "outputSchema": transcribe_file_output_schema(),
+            "annotations": read_only_annotations()
         },
         {
             "name": "transcribe_whatsapp_export",
@@ -64,7 +195,9 @@ pub(crate) fn tool_list() -> Value {
                 },
                 "required": ["zip_path"],
                 "additionalProperties": false
-            }
+            },
+            "outputSchema": whatsapp_output_schema(),
+            "annotations": read_only_annotations()
         },
         {
             "name": "transcribe_status",
@@ -83,7 +216,9 @@ pub(crate) fn tool_list() -> Value {
                 "properties": {},
                 "required": [],
                 "additionalProperties": false
-            }
+            },
+            "outputSchema": status_output_schema(),
+            "annotations": read_only_annotations()
         }
     ])
 }
@@ -137,6 +272,12 @@ pub(crate) fn parse_args<T: serde::de::DeserializeOwned>(arguments: Value) -> Re
 /// record as structuredContent. The spec's SHOULD of mirroring
 /// structuredContent into the text block is deliberately not followed — the
 /// text block's consumer is the LLM, which wants the transcript, not JSON.
+/// Mirroring would double the token cost of every call for zero information,
+/// and for a WhatsApp export that is a second copy of what can be 100 kB of
+/// records. The SHOULD is aimed at clients that cannot read structuredContent,
+/// and now that every tool declares an outputSchema a machine consumer has a
+/// proper contract for the structured half — so the case for mirroring got
+/// weaker with this change, not stronger.
 pub(crate) fn success(text: String, structured: Value) -> Value {
     json!({
         "content": [{ "type": "text", "text": text }],

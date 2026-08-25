@@ -49,6 +49,11 @@ mcp::serve (JSON-RPC 2.0 over stdio, newline-delimited JSON, one engine per sess
             + every result gains resultType and _meta.serverInfo
             + tools/list gains ttlMs and cacheScope
 
+  every tool declares inputSchema + outputSchema and the annotations
+  readOnlyHint: true / openWorldHint: false; tests/mcp_schema_test.rs is the
+  drift guard (key-set comparison, no validator crate) — a declared schema
+  with nothing checking it is worse than none
+
   tools/call, both eras:
        ├─ transcribe_file               → engine.transcribe, transcript as content
        ├─ transcribe_whatsapp_export    → same zip/parse/select helpers as
