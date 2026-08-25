@@ -80,6 +80,63 @@ pub fn resolve_model(model: &str) -> Result<PathBuf, String> {
     Ok(dest)
 }
 
+/// A unique-per-call temp path next to `dest`.
+///
+/// The nonce (PID + a process-local counter) means two concurrent cold
+/// starts — two MCP clients launching at once, or a batch run alongside an
+/// agent — each write their own file instead of interleaving into one and
+/// committing a corrupt model that both processes think succeeded. Same
+/// pattern as the MCP WhatsApp tool's scratch dir. Deliberately not a
+/// lockfile: a stale lock after a SIGKILL is a worse failure mode than a
+/// benign duplicate download.
+pub fn partial_path(dest: &Path) -> PathBuf {
+    static PARTIAL_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let mut name = dest.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(
+        ".partial-{}-{}",
+        std::process::id(),
+        PARTIAL_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    dest.with_file_name(name)
+}
+
+/// Removes the partial file on drop unless the download was committed, so
+/// no error path can leave debris — and nothing half-written can ever be
+/// renamed into the cache.
+pub struct PartialGuard {
+    path: PathBuf,
+    committed: bool,
+}
+
+impl PartialGuard {
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            committed: false,
+        }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Move the completed download into place.
+    pub fn commit(mut self, dest: &Path) -> Result<(), String> {
+        std::fs::rename(&self.path, dest)
+            .map_err(|e| format!("failed to move model into place: {e}"))?;
+        self.committed = true;
+        Ok(())
+    }
+}
+
+impl Drop for PartialGuard {
+    fn drop(&mut self) {
+        if !self.committed {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
 fn download_model(filename: &str, dest: &Path) -> Result<(), String> {
     let url = format!("{HF_BASE_URL}/{filename}");
     eprintln!("downloading model {filename} ...");
@@ -111,12 +168,13 @@ fn download_model(filename: &str, dest: &Path) -> Result<(), String> {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("failed to create {}: {e}", parent.display()))?;
     }
-    let tmp = dest.with_extension("bin.partial");
-    let mut out = std::fs::File::create(&tmp)
-        .map_err(|e| format!("failed to create {}: {e}", tmp.display()))?;
+    let guard = PartialGuard::new(partial_path(dest));
+    let mut out = std::fs::File::create(guard.path())
+        .map_err(|e| format!("failed to create {}: {e}", guard.path().display()))?;
 
     let mut reader = response.into_body().into_reader();
     let mut buf = [0u8; 64 * 1024];
+    let mut written: u64 = 0;
     loop {
         let n = reader
             .read(&mut buf)
@@ -126,12 +184,29 @@ fn download_model(filename: &str, dest: &Path) -> Result<(), String> {
         }
         out.write_all(&buf[..n])
             .map_err(|e| format!("write failed: {e}"))?;
+        written += n as u64;
         bar.inc(n as u64);
     }
     bar.finish_and_clear();
     drop(out);
 
-    std::fs::rename(&tmp, dest).map_err(|e| format!("failed to move model into place: {e}"))?;
+    // A dropped connection can end the stream without an IO error; committing
+    // a file we already know is the wrong length would poison the cache
+    // permanently (every later run reads it as a cache hit and fails context
+    // init with no hint).
+    if total > 0 && written != total {
+        return Err(format!(
+            "download truncated: got {written} bytes, expected {total} — not caching, re-run to retry"
+        ));
+    }
+
+    // If another process won the race, keep its file and drop our temp
+    // rather than clobbering a good model with an identical one.
+    if dest.is_file() {
+        return Ok(());
+    }
+
+    guard.commit(dest)?;
     eprintln!("model saved to {}", dest.display());
     Ok(())
 }
