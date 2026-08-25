@@ -27,6 +27,9 @@ pub enum Commands {
 
     /// Run as an MCP (Model Context Protocol) server over stdio
     Mcp(McpArgs),
+
+    /// Download the model into the cache and exit (pre-warm)
+    Warm(WarmArgs),
 }
 
 #[derive(Args, Debug)]
@@ -115,6 +118,13 @@ pub struct McpArgs {
     /// Device to run on
     #[arg(long, default_value = "cpu")]
     pub device: String,
+}
+
+#[derive(Args, Debug)]
+pub struct WarmArgs {
+    /// Whisper model size (or a path to a ggml .bin file)
+    #[arg(long, default_value = "small")]
+    pub model: String,
 }
 
 /// `--lang auto` means "let the engine detect the language".

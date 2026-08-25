@@ -43,10 +43,13 @@ or, in a project `.mcp.json` (Claude Code) / `claude_desktop_config.json`
 }
 ```
 
-That is the whole setup. Two tools appear — `transcribe_file` and
-`transcribe_whatsapp_export` — and any MCP client can use them: Claude Code,
-Claude Desktop, Cursor, Windsurf. Hand the agent an `.opus`, an `.mp3`, a
-whole WhatsApp chat-export zip; it transcribes locally and reads the text.
+That is the whole setup. Three tools appear — `transcribe_file`,
+`transcribe_whatsapp_export` and `transcribe_status` — and any MCP client can
+use them: Claude Code, Claude Desktop, Cursor, Windsurf. Hand the agent an
+`.opus`, an `.mp3`, a whole WhatsApp chat-export zip; it transcribes locally
+and reads the text. `transcribe_status` lets the agent check the model cache,
+language and device without transcribing anything (it never touches the
+network).
 
 The server speaks the current MCP revision, **2026-07-28** (stateless, with
 `server/discover`), and still answers the `initialize` handshake of 2025-06-18
@@ -54,9 +57,14 @@ and older — so it works with clients on either side of that change.
 
 Model, language and device are fixed per server instance (`harken mcp --model
 medium --lang auto`) with the same defaults as the CLI (`small`, `pt`, `cpu`) —
-run two entries for two languages. A first call with an uncached model
-downloads it inside that call (~466 MB for `small`); pre-warm with any CLI run
-(`harken --model small some.opus`) if your client times out long tool calls.
+run two entries for two languages. On startup the server downloads an uncached
+model in the background (~466 MB for `small`) while it already answers
+`initialize`/`tools/list`; a tool call arriving mid-download waits for it. To
+skip even that first-call wait, pre-warm the cache once:
+
+```bash
+harken warm            # or: harken warm --model medium
+```
 
 ## Why
 

@@ -220,3 +220,15 @@ fn batch_mode_returns_2_on_malformed_glob() {
     assert_eq!(exit_code, 2);
     assert!(engine.calls.is_empty());
 }
+
+// --- warm subcommand ----------------------------------------------------------
+
+#[test]
+fn parser_routes_warm_subcommand_with_default_model() {
+    let cli = Cli::try_parse_from(["harken", "warm"]).unwrap();
+
+    match cli.command {
+        Some(Commands::Warm(args)) => assert_eq!(args.model, "small"),
+        other => panic!("expected warm subcommand, got {other:?}"),
+    }
+}

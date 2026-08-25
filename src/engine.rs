@@ -29,6 +29,13 @@ pub struct TranscriptionResult {
 /// run fully offline with a fake engine.
 pub trait Transcriber {
     fn transcribe(&mut self, path: &Path) -> Result<TranscriptionResult, EngineError>;
+
+    /// Whether a real model context is resident. Defaulted so implementors
+    /// without one (fakes, wrappers) need no change; the MCP status tool is
+    /// the consumer.
+    fn is_loaded(&self) -> bool {
+        false
+    }
 }
 
 /// Join per-segment texts (already trimmed) into the full-transcript text.
@@ -160,6 +167,10 @@ impl WhisperCppEngine {
 }
 
 impl Transcriber for WhisperCppEngine {
+    fn is_loaded(&self) -> bool {
+        self.ctx.is_some()
+    }
+
     fn transcribe(&mut self, path: &Path) -> Result<TranscriptionResult, EngineError> {
         if !path.exists() {
             return Err(format!("Audio file not found: {}", path.display()).into());

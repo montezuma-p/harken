@@ -51,15 +51,17 @@ fn cache_dir() -> PathBuf {
     base.join("harken").join("models")
 }
 
-/// Resolve `--model` to a local ggml file path.
+/// Where `--model` already resolves locally, if anywhere. Pure stat — this
+/// never touches the network, which is what lets the MCP `transcribe_status`
+/// tool answer "would a call download?" without ever risking one.
 ///
-/// A value that is an existing file path is used directly. A known model
-/// name resolves to the cache (downloading on first use). Anything else is
-/// an error listing the valid names.
-pub fn resolve_model(model: &str) -> Result<PathBuf, String> {
+/// Ok(Some) — an existing file path, or a known name present in the cache.
+/// Ok(None) — a known name that would need a download.
+/// Err      — a name that is neither a file nor a known model.
+pub fn cached_path(model: &str) -> Result<Option<PathBuf>, String> {
     let as_path = Path::new(model);
     if as_path.is_file() {
-        return Ok(as_path.to_path_buf());
+        return Ok(Some(as_path.to_path_buf()));
     }
 
     if !is_known_name(model) {
@@ -70,14 +72,106 @@ pub fn resolve_model(model: &str) -> Result<PathBuf, String> {
         ));
     }
 
+    let dest = cache_dir().join(format!("ggml-{model}.bin"));
+    Ok(dest.is_file().then_some(dest))
+}
+
+/// Make `--model` locally available, downloading on a cache miss. Touches
+/// only the filesystem and ureq, so it is trivially Send — the MCP mode runs
+/// it on a warm-up thread before the first tool call needs it.
+pub fn ensure_downloaded(model: &str, sink: &mut dyn ProgressSink) -> Result<PathBuf, String> {
+    if let Some(path) = cached_path(model)? {
+        return Ok(path);
+    }
     let filename = format!("ggml-{model}.bin");
     let dest = cache_dir().join(&filename);
-    if dest.is_file() {
-        return Ok(dest);
+    download_model(&filename, &dest, sink)?;
+    Ok(dest)
+}
+
+/// Resolve `--model` to a local ggml file path (CLI entry: progress bar).
+///
+/// A value that is an existing file path is used directly. A known model
+/// name resolves to the cache (downloading on first use). Anything else is
+/// an error listing the valid names.
+pub fn resolve_model(model: &str) -> Result<PathBuf, String> {
+    ensure_downloaded(model, &mut BarSink::default())
+}
+
+/// Download progress reporting, decoupled from indicatif so MCP mode can
+/// report on a piped stderr where a drawn bar would be noise (or worse,
+/// escape codes in a client's log). A future MCP progress-notification
+/// stream is a third implementor away.
+pub trait ProgressSink {
+    fn start(&mut self, filename: &str, total_bytes: u64);
+    fn advance(&mut self, bytes: u64);
+    fn finish(&mut self);
+}
+
+/// CLI sink: the indicatif bar (spinner when the length is unknown).
+#[derive(Default)]
+pub struct BarSink {
+    bar: Option<ProgressBar>,
+}
+
+impl ProgressSink for BarSink {
+    fn start(&mut self, _filename: &str, total_bytes: u64) {
+        let bar = if total_bytes > 0 {
+            let bar = ProgressBar::new(total_bytes);
+            bar.set_style(
+                ProgressStyle::with_template(
+                    "{bar:40} {bytes}/{total_bytes} ({bytes_per_sec}, eta {eta})",
+                )
+                .expect("valid template"),
+            );
+            bar
+        } else {
+            ProgressBar::new_spinner()
+        };
+        self.bar = Some(bar);
     }
 
-    download_model(&filename, &dest)?;
-    Ok(dest)
+    fn advance(&mut self, bytes: u64) {
+        if let Some(bar) = &self.bar {
+            bar.inc(bytes);
+        }
+    }
+
+    fn finish(&mut self) {
+        if let Some(bar) = self.bar.take() {
+            bar.finish_and_clear();
+        }
+    }
+}
+
+/// MCP sink: one plain stderr line per 10% so a piped log stays readable.
+#[derive(Default)]
+pub struct StderrSink {
+    filename: String,
+    total: u64,
+    written: u64,
+    last_decile: u64,
+}
+
+impl ProgressSink for StderrSink {
+    fn start(&mut self, filename: &str, total_bytes: u64) {
+        self.filename = filename.to_string();
+        self.total = total_bytes;
+    }
+
+    fn advance(&mut self, bytes: u64) {
+        self.written += bytes;
+        if self.total == 0 {
+            return;
+        }
+        let decile = self.written * 10 / self.total;
+        if decile > self.last_decile {
+            self.last_decile = decile;
+            eprintln!("download {}: {}%", self.filename, (decile * 10).min(100));
+        }
+    }
+
+    fn finish(&mut self) {}
 }
 
 /// A unique-per-call temp path next to `dest`.
@@ -149,7 +243,7 @@ pub fn expected_sha256(etag: &str) -> Option<String> {
         .then(|| hex.to_ascii_lowercase())
 }
 
-fn download_model(filename: &str, dest: &Path) -> Result<(), String> {
+fn download_model(filename: &str, dest: &Path, sink: &mut dyn ProgressSink) -> Result<(), String> {
     let url = format!("{HF_BASE_URL}/{filename}");
     eprintln!("downloading model {filename} ...");
 
@@ -191,18 +285,7 @@ fn download_model(filename: &str, dest: &Path) -> Result<(), String> {
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
-    let bar = if total > 0 {
-        let bar = ProgressBar::new(total);
-        bar.set_style(
-            ProgressStyle::with_template(
-                "{bar:40} {bytes}/{total_bytes} ({bytes_per_sec}, eta {eta})",
-            )
-            .expect("valid template"),
-        );
-        bar
-    } else {
-        ProgressBar::new_spinner()
-    };
+    sink.start(filename, total);
 
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)
@@ -231,9 +314,9 @@ fn download_model(filename: &str, dest: &Path) -> Result<(), String> {
             sha2::Digest::update(h, &buf[..n]);
         }
         written += n as u64;
-        bar.inc(n as u64);
+        sink.advance(n as u64);
     }
-    bar.finish_and_clear();
+    sink.finish();
     drop(out);
 
     // A dropped connection can end the stream without an IO error; committing

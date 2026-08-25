@@ -51,9 +51,19 @@ mcp::serve (JSON-RPC 2.0 over stdio, newline-delimited JSON, one engine per sess
 
   tools/call, both eras:
        ├─ transcribe_file               → engine.transcribe, transcript as content
-       └─ transcribe_whatsapp_export    → same zip/parse/select helpers as
-            whatsapp mode, attachments extracted to a per-call temp dir,
-            transcripts returned as content — no files written
+       ├─ transcribe_whatsapp_export    → same zip/parse/select helpers as
+       │    whatsapp mode, attachments extracted to a per-call temp dir,
+       │    transcripts returned as content — no files written
+       └─ transcribe_status             → model cache state via model::cached_path
+            (pure stat, never the network), language, device, context_loaded
+
+  startup: main() spawns a warm-up thread running model::ensure_downloaded
+  (StderrSink: a line per 10%) so the read loop answers initialize/discover/
+  tools/list in milliseconds while an uncached model streams in; WarmGate
+  holds tool calls until the warm settles. A failed warm-up is logged, and
+  the gate lets calls through anyway — the engine retries the download
+  inline, so the error surfaces per call as isError: true and the server
+  never dies.
 ```
 
 Exit codes everywhere: `0` ok, `1` some transcription failed, `2` input error.
@@ -128,14 +138,24 @@ when the source rate differs from 16 kHz. `.ogg`/`.oga` first tries symphonia,
 then falls back to the libopus path — symphonia demuxes Ogg but cannot decode
 an Opus stream. Multi-channel audio is downmixed to mono by averaging.
 
-**`src/model.rs`** — maps `--model` to a local ggml file. An existing file
-path is used verbatim; otherwise the name must be one of the known ggml names
-(`tiny` … `large-v3-turbo`, plus `.en` variants), optionally with a
-`-q5_0`/`-q5_1`/`-q8_0` quantization suffix. Cache:
+**`src/model.rs`** — maps `--model` to a local ggml file, split three ways:
+`cached_path` (pure stat — what the MCP status tool calls, so it can never
+trigger a download), `ensure_downloaded` (filesystem + ureq only, hence
+trivially `Send` for the MCP warm-up thread), and `resolve_model` (the CLI
+wrapper). An existing file path is used verbatim; otherwise the name must be
+one of the known ggml names (`tiny` … `large-v3-turbo`, plus `.en` variants),
+optionally with a `-q5_0`/`-q5_1`/`-q8_0` quantization suffix. Cache:
 `~/.cache/harken/models/ggml-<name>.bin` (respects `XDG_CACHE_HOME` if
-absolute). Download is from the `ggerganov/whisper.cpp` HF repo via ureq with
-an indicatif progress bar, written to a `.partial` file and renamed into place
-(no half-downloaded models in the cache).
+absolute). Download is from the `ggerganov/whisper.cpp` HF repo via ureq;
+progress goes through the `ProgressSink` trait (`BarSink` = indicatif for the
+CLI, `StderrSink` = one plain line per 10% for MCP mode, where a drawn bar in
+a piped stderr would be noise). Integrity: bytes stream into a `.partial`
+file with a PID+counter nonce (concurrent cold starts cannot interleave),
+guarded so error paths leave no debris; the byte count is checked against
+Content-Length and the SHA-256 against HuggingFace's `X-Linked-Etag` — read
+off the *redirect* response, which is why the first hop is taken unfollowed —
+before the rename. The hash check is a corruption/mirror guard, not
+provenance. `harken warm [--model X]` pre-downloads and exits.
 
 **`src/batch.rs`** — input collection and the batch loop. `collect_audio_files`
 distinguishes explicit paths (included verbatim, any extension; missing → hard

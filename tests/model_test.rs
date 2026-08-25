@@ -81,3 +81,23 @@ fn non_sha256_etag_is_ignored() {
         None
     );
 }
+
+// --- cached_path (issue #19) ----------------------------------------------
+
+#[test]
+fn cached_path_returns_an_existing_file_verbatim() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("my-model.bin");
+    fs::write(&file, b"m").unwrap();
+
+    let found = harken::model::cached_path(file.to_string_lossy().as_ref()).unwrap();
+
+    assert_eq!(found, Some(file));
+}
+
+#[test]
+fn cached_path_invalid_name_is_err_and_never_downloads() {
+    let err = harken::model::cached_path("not-a-model").unwrap_err();
+
+    assert!(err.contains("invalid model"), "got: {err}");
+}
