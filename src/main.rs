@@ -17,14 +17,60 @@ fn main() {
             harken::whatsapp::run(args, &mut engine)
         }
         Some(Commands::Mcp(args)) => {
+            // Warm the model cache on a side thread so the read loop answers
+            // initialize/discover/tools/list in milliseconds while the
+            // download streams; the WarmGate holds tool calls until it
+            // settles. A failed warm-up is logged and the gate lets calls
+            // through to retry inline — it must never kill the server.
+            let warmth = harken::mcp::Warmth::new();
+            let warm_handle = {
+                let warmth = warmth.clone();
+                let model = args.model.clone();
+                std::thread::spawn(move || {
+                    let mut sink = harken::model::StderrSink::default();
+                    match harken::model::ensure_downloaded(&model, &mut sink) {
+                        Ok(_) => warmth.set_ready(),
+                        Err(e) => {
+                            eprintln!("warning: model warm-up failed: {e}");
+                            warmth.set_failed(e);
+                        }
+                    }
+                })
+            };
+            let info = harken::mcp::ServerInfo {
+                model: args.model.clone(),
+                lang: args.lang.clone(),
+                device: args.device.clone(),
+            };
             let mut engine = WhisperCppEngine::new(
                 args.model.clone(),
                 args.device.clone(),
                 language_option(&args.lang),
             );
+            let mut gate = harken::mcp::WarmGate::new(&mut engine, warmth);
             let mut stdout = std::io::stdout().lock();
-            match harken::mcp::serve(std::io::stdin().lock(), &mut stdout, &mut engine) {
+            let code = match harken::mcp::serve_with_info(
+                std::io::stdin().lock(),
+                &mut stdout,
+                &mut gate,
+                &info,
+            ) {
                 Ok(()) => 0,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    1
+                }
+            };
+            let _ = warm_handle.join();
+            code
+        }
+        Some(Commands::Warm(args)) => {
+            let mut sink = harken::model::BarSink::default();
+            match harken::model::ensure_downloaded(&args.model, &mut sink) {
+                Ok(path) => {
+                    eprintln!("model {} ready at {}", args.model, path.display());
+                    0
+                }
                 Err(e) => {
                     eprintln!("error: {e}");
                     1

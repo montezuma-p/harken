@@ -186,7 +186,8 @@ fn tools_list_shape() {
     let result = &replies[0]["result"];
     assert!(result.get("nextCursor").is_none());
     let tools = result["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 2);
+    // 3 since transcribe_status (issue #19) joined the catalog.
+    assert_eq!(tools.len(), 3);
     assert_eq!(tools[0]["name"], json!("transcribe_file"));
     assert_eq!(tools[0]["inputSchema"]["required"], json!(["path"]));
     assert_eq!(

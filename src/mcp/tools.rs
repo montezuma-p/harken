@@ -65,6 +65,22 @@ pub(crate) fn tool_list() -> Value {
                 "required": ["zip_path"],
                 "additionalProperties": false
             }
+        },
+        {
+            "name": "transcribe_status",
+            "title": "Transcription server status",
+            "description": "Report this server's fixed configuration and model cache state \
+                            without transcribing anything: model name, whether the model file \
+                            is already cached locally (path and size in bytes) or the first \
+                            transcription call would have to download it first (~466 MB for \
+                            the default 'small'), language, device, and whether the whisper \
+                            context is loaded. Never touches the network.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": false
+            }
         }
     ])
 }
@@ -73,6 +89,7 @@ pub(crate) fn tools_call(
     id: Value,
     params: Option<Value>,
     transcriber: &mut dyn Transcriber,
+    info: &super::ServerInfo,
 ) -> Value {
     let params = params.unwrap_or(Value::Null);
     // A call with no name is malformed params, not a call to a tool named "".
@@ -92,6 +109,7 @@ pub(crate) fn tools_call(
         "transcribe_whatsapp_export" => {
             super::whatsapp_tool::tool_transcribe_whatsapp_export(arguments, transcriber)
         }
+        "transcribe_status" => tool_transcribe_status(arguments, transcriber, info),
         _ => Err(McpError {
             code: INVALID_PARAMS,
             message: format!("Unknown tool: {name}"),
@@ -156,4 +174,61 @@ fn tool_transcribe_file(
         Ok(result) => success(result.text.clone(), structured_result(&result)),
         Err(e) => tool_error(e.to_string()),
     })
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StatusArgs {}
+
+/// Cache state comes from `model::cached_path`, which is a pure stat — this
+/// tool can never trigger a download, which is what makes it a trustworthy
+/// answer to "will the first call stall?". An invalid --model is reported as
+/// a diagnosis in the result, not a tool failure: the agent asking "can this
+/// server transcribe?" deserves the answer.
+fn tool_transcribe_status(
+    arguments: Value,
+    transcriber: &mut dyn Transcriber,
+    info: &super::ServerInfo,
+) -> Result<Value, McpError> {
+    let StatusArgs {} = parse_args(arguments)?;
+    let (cached, path, size_bytes, error) = match crate::model::cached_path(&info.model) {
+        Ok(Some(p)) => {
+            let size = std::fs::metadata(&p).map(|m| m.len()).ok();
+            (true, Some(p.display().to_string()), size, None)
+        }
+        Ok(None) => (false, None, None, None),
+        Err(e) => (false, None, None, Some(e)),
+    };
+    let context_loaded = transcriber.is_loaded();
+
+    let text = match (&error, cached) {
+        (Some(e), _) => format!("model '{}' is unusable: {e}", info.model),
+        (None, true) => format!(
+            "model {} cached at {} ({} bytes); language {}; device {}; context loaded: {}",
+            info.model,
+            path.as_deref().unwrap_or("?"),
+            size_bytes.unwrap_or(0),
+            info.lang,
+            info.device,
+            context_loaded,
+        ),
+        (None, false) => format!(
+            "model {} is NOT cached: the first transcription call will download it; \
+             language {}; device {}",
+            info.model, info.lang, info.device,
+        ),
+    };
+    Ok(success(
+        text,
+        json!({
+            "model": info.model,
+            "language": info.lang,
+            "device": info.device,
+            "cached": cached,
+            "path": path,
+            "size_bytes": size_bytes,
+            "context_loaded": context_loaded,
+            "error": error,
+        }),
+    ))
 }
