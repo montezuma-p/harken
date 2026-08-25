@@ -10,11 +10,11 @@ notes, roadmap, ADRs — never commit it).
 ## Commands
 
 - `make check` — full local CI: `fmt` + `clippy -D warnings` + `test` + `cargo audit` + `cargo machete`. Run before claiming anything done.
-- `cargo test` — 158 integration tests, instant and offline.
+- `cargo test` — 166 integration tests, instant and offline.
 - `cargo test --test ffi_smoke_test -- --ignored` — opt-in smoke test that loads
   a real whisper context through `src/ffi.rs` (skips if `ggml-tiny.bin` is not
   already cached; never runs in CI). Run it after touching `src/ffi.rs`,
-  `build.rs`, or the submodule pin — the 158 tests above use `FakeEngine` and
+  `build.rs`, or the submodule pin — the 166 tests above use `FakeEngine` and
   cannot catch an FFI mistake.
 - `cargo build` — needs a C++ toolchain (whisper.cpp is compiled in) and the
   `vendor/whisper.cpp` submodule checked out (`git submodule update --init
@@ -24,11 +24,13 @@ notes, roadmap, ADRs — never commit it).
 
 ## Inviolable rules
 
-- **The 158 tests in `tests/` are the behavior SPEC** (the original 88 were
+- **The 166 tests in `tests/` are the behavior SPEC** (the original 88 were
   ported from the Python suite's 81; the MCP server added 27, 2026-07-28
-  compliance added 22 more in `tests/mcp_protocol_test.rs`, and the 2026-08-25
+  compliance added 22 more in `tests/mcp_protocol_test.rs`, the 2026-08-25
   issue sweep added 21 across `tests/audio_test.rs`, `tests/model_test.rs` and
-  `tests/mcp_status_test.rs`). A behavior change requires consciously changing
+  `tests/mcp_status_test.rs`, and the warm-up follow-ups added 4 in
+  `tests/mcp_status_test.rs` plus 4 schema-drift guards in
+  `tests/mcp_schema_test.rs`). A behavior change requires consciously changing
   the corresponding test — never "fix" a test to make code pass.
 - **stdout stays clean.** All progress, logs, and summaries go to stderr. The
   one exception is `harken mcp`, where stdout *is* the protocol channel: it
@@ -129,6 +131,28 @@ cargo-dist 0.32. Pushing a `v*` tag builds GitHub Releases for 5 targets
 published on crates.io (`cargo publish` is manual, run it on the same commit
 as the `v*` tag). `Cargo.toml` `version` and `.claude-plugin/plugin.json`
 `version` must bump together.
+
+**Which number to bump.** Cargo's `0.y.z` rules, applied to the *whole*
+product — the crate's public API, the CLI surface, and the MCP surface:
+
+- **Bump `y` (0.7 → 0.8)** when anything a consumer depends on breaks: a `pub`
+  item removed or renamed, a **field added to a `pub` struct whose fields are
+  all `pub`** (it breaks literal construction — this is what made v0.8.0 a
+  minor), a required trait method added, a CLI flag removed or its default
+  changed, a tool removed from the MCP catalog or an argument made required.
+- **Bump `z` (0.7.0 → 0.7.1)** for anything purely additive or internal: a new
+  flag, a new tool, a new *optional* field in a result, bug fixes, dependency
+  bumps, performance work.
+
+The cadence has been fast (0.5.0 through 0.8.0 in four days) and that is fine —
+each bump was forced by this rule, not chosen. If a release feels like a jump,
+the question to ask is "what broke?", and the answer should be nameable in one
+line. When it is not, it is a patch.
+
+A release that only changes what an *agent* reads — tool descriptions, result
+text, `tools/list` payload shape — still ships, because the published binary is
+what clients talk to: docs on `main` describing behaviour the released binary
+does not have is the situation v0.7.0 was cut to end.
 
 ## Skill / plugin
 

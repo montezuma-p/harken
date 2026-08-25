@@ -27,6 +27,9 @@ fn main() {
                 let warmth = warmth.clone();
                 let model = args.model.clone();
                 std::thread::spawn(move || {
+                    // The guard settles the state on unwind, so a panic in here
+                    // cannot leave the gate blocking every tool call forever.
+                    let settle = harken::mcp::WarmSettle::new(warmth.clone());
                     let mut sink = harken::model::StderrSink::default();
                     match harken::model::ensure_downloaded(&model, &mut sink) {
                         Ok(_) => warmth.set_ready(),
@@ -35,12 +38,14 @@ fn main() {
                             warmth.set_failed(e);
                         }
                     }
+                    settle.done();
                 })
             };
             let info = harken::mcp::ServerInfo {
                 model: args.model.clone(),
                 lang: args.lang.clone(),
                 device: args.device.clone(),
+                warm: Some(warmth.clone()),
             };
             let mut engine = WhisperCppEngine::new(
                 args.model.clone(),
@@ -61,7 +66,20 @@ fn main() {
                     1
                 }
             };
-            let _ = warm_handle.join();
+            // Detach rather than join: EOF means the client is gone, and
+            // joining would hold the process open for the rest of a download
+            // nobody is waiting on — up to 466 MB for the default `small`, once
+            // per server a client spawns and kills while probing a config.
+            //
+            // Abandoning a download can never corrupt the cache: only a
+            // Content-Length- and SHA-256-checked file is ever renamed into
+            // place, so a killed download leaves nothing a later run can mistake
+            // for a model. The honest cost is debris — process::exit runs no
+            // destructor, so PartialGuard does not fire and the
+            // `.partial-<pid>-<n>` file is orphaned in the cache dir. The nonce
+            // keeps it inert; it is wasted bytes, not a wrong model. Bounding
+            // shutdown is worth that.
+            drop(warm_handle);
             code
         }
         Some(Commands::Warm(args)) => {

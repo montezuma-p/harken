@@ -49,7 +49,8 @@ use them: Claude Code, Claude Desktop, Cursor, Windsurf. Hand the agent an
 `.opus`, an `.mp3`, a whole WhatsApp chat-export zip; it transcribes locally
 and reads the text. `transcribe_status` lets the agent check the model cache,
 language and device without transcribing anything (it never touches the
-network).
+network) — including whether the startup download is still in flight, so a
+call that would simply wait is not mistaken for one that would stall.
 
 The server speaks the current MCP revision, **2026-07-28** (stateless, with
 `server/discover`), and still answers the `initialize` handshake of 2025-06-18
