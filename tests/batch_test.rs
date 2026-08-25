@@ -84,15 +84,37 @@ fn collect_dedups_file_reachable_two_ways() {
 }
 
 #[test]
-fn collect_missing_path_is_err_with_raw_path() {
+fn collect_missing_path_is_err_with_message_naming_path() {
     let tmp = tempfile::tempdir().unwrap();
     let missing = tmp.path().join("nope.mp3");
     let raw = missing.to_string_lossy().into_owned();
 
     let err = collect_audio_files(std::slice::from_ref(&raw)).unwrap_err();
 
-    assert_eq!(err, raw);
-    assert!(err.contains("nope.mp3"));
+    assert_eq!(err, format!("path not found: {raw}"));
+}
+
+#[test]
+fn collect_malformed_glob_is_err_naming_pattern() {
+    let err = collect_audio_files(&["[bad".to_string()]).unwrap_err();
+
+    assert!(err.contains("[bad"), "message must name the pattern: {err}");
+    assert!(
+        err.contains("invalid glob pattern"),
+        "message must say the pattern is the fault: {err}"
+    );
+}
+
+#[test]
+fn collect_valid_glob_matching_nothing_is_ok_empty() {
+    // Deliberate: `harken *.opus` in a directory with none is not an input
+    // error -- only a pattern that cannot compile is.
+    let tmp = tempfile::tempdir().unwrap();
+    let pattern = tmp.path().join("*.opus").to_string_lossy().into_owned();
+
+    let result = collect_audio_files(&[pattern]).unwrap();
+
+    assert!(result.is_empty());
 }
 
 // --- run_batch -----------------------------------------------------------
