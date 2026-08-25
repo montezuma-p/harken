@@ -27,13 +27,119 @@ use jsonrpc::{
 };
 use tools::{tool_list, tools_call};
 
+/// The per-instance configuration the `transcribe_status` tool reports.
+/// Data only — the serve loop itself never reads it for dispatch.
+pub struct ServerInfo {
+    pub model: String,
+    pub lang: String,
+    pub device: String,
+}
+
+impl Default for ServerInfo {
+    fn default() -> Self {
+        Self {
+            model: "small".to_string(),
+            lang: "pt".to_string(),
+            device: "cpu".to_string(),
+        }
+    }
+}
+
+/// Shared warm-up state between main's model-download thread and the
+/// WarmGate holding tool calls. Pending until the thread settles it.
+#[derive(Clone, Default)]
+pub struct Warmth(std::sync::Arc<(std::sync::Mutex<WarmState>, std::sync::Condvar)>);
+
+#[derive(Default)]
+enum WarmState {
+    #[default]
+    Pending,
+    Ready,
+    Failed(String),
+}
+
+impl Warmth {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set_ready(&self) {
+        *self.0.0.lock().expect("warmth lock") = WarmState::Ready;
+        self.0.1.notify_all();
+    }
+
+    pub fn set_failed(&self, message: String) {
+        *self.0.0.lock().expect("warmth lock") = WarmState::Failed(message);
+        self.0.1.notify_all();
+    }
+
+    /// The recorded warm-up failure, if the warm thread reported one.
+    pub fn failure(&self) -> Option<String> {
+        match &*self.0.0.lock().expect("warmth lock") {
+            WarmState::Failed(msg) => Some(msg.clone()),
+            _ => None,
+        }
+    }
+
+    fn wait_until_settled(&self) {
+        let (lock, condvar) = (&self.0.0, &self.0.1);
+        let mut state = lock.lock().expect("warmth lock");
+        while matches!(*state, WarmState::Pending) {
+            state = condvar.wait(state).expect("warmth lock");
+        }
+    }
+}
+
+/// Transcriber wrapper for MCP mode: holds each call until the warm-up
+/// thread settles, so a call arriving mid-download waits for that download
+/// instead of starting a duplicate one. After a *failed* warm-up it
+/// delegates anyway — the engine's own model resolution retries the
+/// download inline and surfaces a live error as `isError: true`, so a
+/// transient network failure at startup never wedges or kills the server.
+pub struct WarmGate<'a, T: Transcriber + ?Sized> {
+    inner: &'a mut T,
+    warmth: Warmth,
+}
+
+impl<'a, T: Transcriber + ?Sized> WarmGate<'a, T> {
+    pub fn new(inner: &'a mut T, warmth: Warmth) -> Self {
+        Self { inner, warmth }
+    }
+}
+
+impl<T: Transcriber + ?Sized> Transcriber for WarmGate<'_, T> {
+    fn transcribe(
+        &mut self,
+        path: &std::path::Path,
+    ) -> Result<crate::engine::TranscriptionResult, crate::engine::EngineError> {
+        self.warmth.wait_until_settled();
+        self.inner.transcribe(path)
+    }
+
+    fn is_loaded(&self) -> bool {
+        self.inner.is_loaded()
+    }
+}
+
 /// Serve MCP until EOF on `reader`. Never touches process stdin/stdout
 /// itself: main() passes the real locked handles, tests pass in-memory
-/// buffers and a `FakeEngine`.
+/// buffers and a `FakeEngine`. This wrapper keeps the original spec'd
+/// signature; `main()` uses `serve_with_info` to hand the status tool the
+/// real per-instance configuration.
 pub fn serve<R: BufRead, W: Write>(
+    reader: R,
+    writer: &mut W,
+    transcriber: &mut dyn Transcriber,
+) -> std::io::Result<()> {
+    serve_with_info(reader, writer, transcriber, &ServerInfo::default())
+}
+
+/// serve(), plus the per-instance configuration `transcribe_status` reports.
+pub fn serve_with_info<R: BufRead, W: Write>(
     mut reader: R,
     writer: &mut W,
     transcriber: &mut dyn Transcriber,
+    info: &ServerInfo,
 ) -> std::io::Result<()> {
     // Bytes rather than BufRead::lines(): that iterator yields Err on a line
     // that is not UTF-8, and propagating it would end the session. A client
@@ -54,7 +160,7 @@ pub fn serve<R: BufRead, W: Write>(
 
         let reply = match std::str::from_utf8(&buf) {
             Ok(line) if line.trim().is_empty() => continue,
-            Ok(line) => handle_line(line, transcriber),
+            Ok(line) => handle_line(line, transcriber, info),
             Err(_) => Some(err(Value::Null, PARSE_ERROR, "Parse error".to_string())),
         };
 
@@ -72,7 +178,11 @@ pub fn serve<R: BufRead, W: Write>(
 
 /// Dispatch one input line to at most one reply. `None` means the line was a
 /// notification (or blank) — JSON-RPC forbids answering anything without an id.
-pub(crate) fn handle_line(line: &str, transcriber: &mut dyn Transcriber) -> Option<Value> {
+pub(crate) fn handle_line(
+    line: &str,
+    transcriber: &mut dyn Transcriber,
+    info: &ServerInfo,
+) -> Option<Value> {
     let value: Value = match serde_json::from_str(line) {
         Ok(v) => v,
         Err(_) => return Some(err(Value::Null, PARSE_ERROR, "Parse error".to_string())),
@@ -124,7 +234,7 @@ pub(crate) fn handle_line(line: &str, transcriber: &mut dyn Transcriber) -> Opti
         ),
         (Era::Modern, "tools/list") => ok(id, era::cacheable(json!({ "tools": tool_list() }))),
         (Era::Legacy, "tools/list") => ok(id, json!({ "tools": tool_list() })),
-        (_, "tools/call") => tools_call(id, request.params, transcriber),
+        (_, "tools/call") => tools_call(id, request.params, transcriber, info),
         (_, method) => err(id, METHOD_NOT_FOUND, format!("Method not found: {method}")),
     };
     // One place, so no dispatch arm can be forgotten.

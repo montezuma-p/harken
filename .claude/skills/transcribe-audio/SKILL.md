@@ -39,8 +39,14 @@ harken whatsapp "$HOME/Downloads/WhatsApp Chat - X.zip" \
   `--format json|srt|md` for timestamps (`md` is the readable one: one
   `[hh:mm:ss] line` per segment).
 - First ever run downloads the ggml model (~466 MB for `small`) to
-  `~/.cache/harken/models`; after that it works fully offline.
+  `~/.cache/harken/models`; after that it works fully offline. `harken warm`
+  (or `harken warm --model medium`) pre-downloads without transcribing —
+  useful right after installing.
+- Never loop over files one `harken` invocation each: pass them all in one
+  invocation (the model loads once per run, and per-file runs reload it).
 - If the harken MCP server is connected (`claude mcp add harken -- harken mcp`),
   prefer its tools — `transcribe_file` and `transcribe_whatsapp_export` — over
-  the shell invocations above; the CLI remains the fallback.
+  the shell invocations above; the CLI remains the fallback. Its
+  `transcribe_status` tool reports the model cache state (whether the first
+  call would download) without transcribing anything.
 - Full docs: [README](https://github.com/montezuma-p/harken#readme).

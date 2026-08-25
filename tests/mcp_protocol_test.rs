@@ -178,7 +178,8 @@ fn a_modern_tools_list_is_served() {
     let replies = drive(&[modern_request(1, "tools/list", json!({}))]);
 
     let tools = replies[0]["result"]["tools"].as_array().expect("tools");
-    assert_eq!(tools.len(), 2);
+    // 3 since transcribe_status (issue #19) joined the catalog.
+    assert_eq!(tools.len(), 3);
 }
 
 #[test]
@@ -261,7 +262,7 @@ fn the_legacy_handshake_still_works_after_a_failed_probe() {
 
     assert_eq!(replies[0]["error"]["code"], -32602);
     assert_eq!(replies[1]["result"]["protocolVersion"], "2025-06-18");
-    assert_eq!(replies[2]["result"]["tools"].as_array().unwrap().len(), 2);
+    assert_eq!(replies[2]["result"]["tools"].as_array().unwrap().len(), 3);
 }
 
 // --- the handshake is legacy-only --------------------------------------------
