@@ -202,3 +202,21 @@ fn batch_mode_returns_2_when_input_missing() {
     assert_eq!(exit_code, 2);
     assert!(engine.calls.is_empty());
 }
+
+#[test]
+fn batch_mode_returns_2_on_malformed_glob() {
+    let tmp = tempfile::tempdir().unwrap();
+    let out_dir = tmp.path().join("out");
+    let mut engine = FakeEngine::new(None);
+
+    let exit_code = run_batch_mode(
+        &["[bad".to_string()],
+        &out_dir.to_string_lossy(),
+        OutputFormat::Txt,
+        false,
+        &mut engine,
+    );
+
+    assert_eq!(exit_code, 2);
+    assert!(engine.calls.is_empty());
+}

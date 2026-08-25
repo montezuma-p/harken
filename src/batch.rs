@@ -41,20 +41,22 @@ fn walk_audio_files(dir: &Path, collected: &mut BTreeSet<PathBuf>) {
 /// - a glob pattern: expanded, filtered to AUDIO_EXTENSIONS (files matched
 ///   by a glob are not "explicit" the way a bare path is).
 ///
-/// A missing explicit path or directory is a hard error: Err carries the raw
-/// input, and the caller reports it and exits 2.
+/// A missing explicit path or directory is a hard error, as is a glob
+/// pattern that cannot compile: Err carries the user-facing message, and the
+/// caller prints it and exits 2. A valid pattern matching nothing is Ok --
+/// `harken *.opus` in a directory with none is not an input error.
 pub fn collect_audio_files(inputs: &[String]) -> Result<Vec<PathBuf>, String> {
     let mut collected: BTreeSet<PathBuf> = BTreeSet::new();
 
     for raw in inputs {
         if raw.contains(GLOB_CHARS) {
-            if let Ok(matches) = glob::glob(raw) {
-                for m in matches.flatten() {
-                    if m.is_dir() {
-                        walk_audio_files(&m, &mut collected);
-                    } else if is_audio(&m) {
-                        collected.insert(m);
-                    }
+            let matches =
+                glob::glob(raw).map_err(|e| format!("invalid glob pattern '{raw}': {e}"))?;
+            for m in matches.flatten() {
+                if m.is_dir() {
+                    walk_audio_files(&m, &mut collected);
+                } else if is_audio(&m) {
+                    collected.insert(m);
                 }
             }
             continue;
@@ -62,7 +64,7 @@ pub fn collect_audio_files(inputs: &[String]) -> Result<Vec<PathBuf>, String> {
 
         let path = PathBuf::from(raw);
         if !path.exists() {
-            return Err(raw.clone());
+            return Err(format!("path not found: {raw}"));
         }
 
         if path.is_dir() {
@@ -176,8 +178,8 @@ pub fn run_batch_mode(
 ) -> i32 {
     let files = match collect_audio_files(inputs) {
         Ok(f) => f,
-        Err(raw) => {
-            eprintln!("error: path not found: {raw}");
+        Err(msg) => {
+            eprintln!("error: {msg}");
             return 2;
         }
     };
