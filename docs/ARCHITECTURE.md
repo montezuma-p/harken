@@ -3,7 +3,7 @@
 Rust crate, single binary. Transcription engine is whisper.cpp (via direct FFI
 bindings in this repo); all audio decoding happens in-process. Ported from a Python
 implementation (faster-whisper/CTranslate2) in v0.3.0; the Python test suite
-was carried over as the behavior spec, now 137 tests in `tests/`, all offline.
+was carried over as the behavior spec, now 158 tests in `tests/`, all offline.
 
 ## Flow
 
