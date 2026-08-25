@@ -144,6 +144,42 @@ fn warm_gate_blocks_a_call_until_ready_then_delegates() {
 }
 
 #[test]
+fn warm_gate_survives_a_panicking_warm_thread() {
+    use harken::engine::Transcriber;
+    use harken::mcp::WarmSettle;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let audio = tmp.path().join("a.wav");
+    std::fs::write(&audio, b"x").unwrap();
+
+    let warmth = Warmth::new();
+    let mut engine = FakeEngine::new(None);
+    let mut gate = WarmGate::new(&mut engine, warmth.clone());
+
+    // A warm thread that panics never reaches set_ready/set_failed. Without the
+    // drop guard the state stays Pending and this transcribe() blocks forever —
+    // the join below is the assertion that it did not.
+    let result = std::thread::scope(|s| {
+        let warm = warmth.clone();
+        let panicker = s.spawn(move || {
+            let _settle = WarmSettle::new(warm);
+            panic!("warm-up exploded");
+        });
+        let caller = s.spawn(|| gate.transcribe(&audio));
+        assert!(panicker.join().is_err(), "the warm thread did panic");
+        caller.join().expect("the gated call did not panic")
+    });
+
+    assert!(result.is_ok());
+    assert_eq!(engine.calls, vec![audio]);
+    assert_eq!(
+        warmth.failure().as_deref(),
+        Some("model warm-up panicked"),
+        "the panic must be recorded as a warm-up failure, not left Pending"
+    );
+}
+
+#[test]
 fn warm_gate_after_failed_warm_still_delegates() {
     use harken::engine::Transcriber;
 

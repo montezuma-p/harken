@@ -63,29 +63,82 @@ impl Warmth {
         Self::default()
     }
 
+    // Every lock here recovers from poisoning instead of unwrapping. No current
+    // caller can poison it — each method below takes the guard, does one move or
+    // clone, and drops it, so there is no window where a panic runs under the
+    // lock — but the cost of being wrong is severe and asymmetric: set_failed()
+    // runs from a Drop impl (WarmSettle), where a panic aborts the process, and
+    // wait_until_settled() would wedge every tool call on the mutex the drop
+    // guard exists to release. WarmState is a plain enum with no invariant an
+    // unwind can leave broken, so the poisoned value is always safe to keep.
+    // Unreachable today, uninsurable if it ever becomes reachable.
+    fn state(&self) -> std::sync::MutexGuard<'_, WarmState> {
+        self.0.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     pub fn set_ready(&self) {
-        *self.0.0.lock().expect("warmth lock") = WarmState::Ready;
+        *self.state() = WarmState::Ready;
         self.0.1.notify_all();
     }
 
     pub fn set_failed(&self, message: String) {
-        *self.0.0.lock().expect("warmth lock") = WarmState::Failed(message);
+        *self.state() = WarmState::Failed(message);
         self.0.1.notify_all();
     }
 
     /// The recorded warm-up failure, if the warm thread reported one.
     pub fn failure(&self) -> Option<String> {
-        match &*self.0.0.lock().expect("warmth lock") {
+        match &*self.state() {
             WarmState::Failed(msg) => Some(msg.clone()),
             _ => None,
         }
     }
 
+    /// Whether the warm-up is still running. Never blocks — `transcribe_status`
+    /// reads this and must answer instantly even mid-download.
+    pub fn is_pending(&self) -> bool {
+        matches!(*self.state(), WarmState::Pending)
+    }
+
     fn wait_until_settled(&self) {
-        let (lock, condvar) = (&self.0.0, &self.0.1);
-        let mut state = lock.lock().expect("warmth lock");
+        let mut state = self.state();
         while matches!(*state, WarmState::Pending) {
-            state = condvar.wait(state).expect("warmth lock");
+            state = self.0.1.wait(state).unwrap_or_else(|e| e.into_inner());
+        }
+    }
+}
+
+/// Settles a `Warmth` on unwind. `set_ready`/`set_failed` both run after
+/// `ensure_downloaded` returns, so a warm thread that *panics* instead of
+/// returning would leave the state `Pending` forever — and `WarmGate` would
+/// block every tool call for the life of the process, a failure worse than
+/// dying: the client sees a `tools/call` that never returns and never errors.
+/// Holding this for the length of the warm closure makes an unwind settle the
+/// state too, so the gate's failure path (delegate and let the engine retry
+/// inline) covers a panic just like it covers a download error.
+pub struct WarmSettle {
+    warmth: Warmth,
+    settled: bool,
+}
+
+impl WarmSettle {
+    pub fn new(warmth: Warmth) -> Self {
+        Self {
+            warmth,
+            settled: false,
+        }
+    }
+
+    /// Record that the happy path settled the state itself.
+    pub fn done(mut self) {
+        self.settled = true;
+    }
+}
+
+impl Drop for WarmSettle {
+    fn drop(&mut self) {
+        if !self.settled {
+            self.warmth.set_failed("model warm-up panicked".to_string());
         }
     }
 }

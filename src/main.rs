@@ -27,6 +27,9 @@ fn main() {
                 let warmth = warmth.clone();
                 let model = args.model.clone();
                 std::thread::spawn(move || {
+                    // The guard settles the state on unwind, so a panic in here
+                    // cannot leave the gate blocking every tool call forever.
+                    let settle = harken::mcp::WarmSettle::new(warmth.clone());
                     let mut sink = harken::model::StderrSink::default();
                     match harken::model::ensure_downloaded(&model, &mut sink) {
                         Ok(_) => warmth.set_ready(),
@@ -35,6 +38,7 @@ fn main() {
                             warmth.set_failed(e);
                         }
                     }
+                    settle.done();
                 })
             };
             let info = harken::mcp::ServerInfo {
