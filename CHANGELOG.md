@@ -1,5 +1,67 @@
 # Changelog
 
+## v0.7.0 — 2026-08-25
+
+The first-run and cold-start paths, which had the least test coverage and the
+worst failure modes: every bug below ended in a wrong answer delivered
+confidently — an empty transcript, a silent CPU run, a poisoned cache — rather
+than in an error.
+
+- **New subcommand: `harken warm [--model X]`** — downloads the model into the
+  cache and exits. Retires the "pre-warm with any CLI run" workaround.
+- **MCP mode no longer stalls on the first call.** The server downloads an
+  uncached model on a warm-up thread while it already answers
+  `initialize`/`server/discover`/`tools/list`; a tool call arriving mid-download
+  waits on that download instead of starting a second one. A failed warm-up is
+  logged and the call is let through to retry inline, so a transient network
+  failure at startup never wedges or kills the server. Measured on a fresh
+  cache: `initialize` at 0 ms and `tools/list` at 17 ms while 77 MB streamed.
+- **New MCP tool: `transcribe_status`** — reports model, cache state (path and
+  size), language, device and whether the whisper context is loaded, without
+  transcribing. It reads the cache with a pure stat, so it can never itself
+  trigger a download.
+- **Fixed:** a file whose every packet failed to decode (valid headers, garbage
+  payload) produced an empty transcript with exit 0 — over MCP, `isError: false`
+  with empty text, so an agent reasoned over a transcript that did not exist.
+  Undecodable packets are still skipped, but now counted: all of them failing is
+  an error, a partial skip warns about gaps, and `ResetRequired` truncation
+  warns instead of passing silently. "Silence" and "nothing decoded" are no
+  longer the same outcome.
+- **Fixed:** a malformed glob (`harken '[bad'`) reported `0 done` and exit 0,
+  indistinguishable from a valid pattern matching nothing. A pattern that cannot
+  compile is now an input error naming the pattern, with exit 2. A **valid**
+  glob matching zero files stays exit 0 — that distinction is pinned by a test.
+- **Fixed:** a truncated download was renamed into the cache and read as a cache
+  hit forever, failing context init on every later run with no hint. The written
+  byte count is now checked against `Content-Length`, the `.partial` file
+  carries a PID+counter nonce so concurrent cold starts cannot interleave into
+  one file, and a guard removes it on any error path. The context-init error
+  also names the model path and says to delete it if corrupt.
+- **Downloads are verified against HuggingFace's SHA-256** (`X-Linked-Etag`,
+  read off the redirect response — the CDN's plain `ETag` is a different hash).
+  A mismatch refuses to cache. This is a corruption and mirror guard, **not**
+  provenance: the server states its own file's hash.
+- **Fixed:** `--device cuda` ran at CPU speed reporting nothing. No shipped
+  binary compiles a GPU backend, so the flag found none to bind and ggml quietly
+  proceeded on CPU. It now warns on stderr and runs on CPU — a warning rather
+  than an error, so scripts passing `--device` optimistically keep working.
+  README and `docs/ARCHITECTURE.md` no longer imply GPU offload is available.
+- Dependencies: **`ureq` 2 → 3** (the migration Dependabot could not do), which
+  drops the `url`/`idna`/`icu_*` chain — `Cargo.lock` went 172 → 150 crates
+  before `sha2` was added for the hash check. That chain was half the reason for
+  the 1.88 MSRV; the floor is now let-chains alone, so `rust-version` is
+  unchanged.
+- `src/model.rs` split into `cached_path` (pure stat), `ensure_downloaded`
+  (filesystem + ureq, hence `Send`) and `resolve_model` (the CLI wrapper), with
+  progress behind a new `ProgressSink` trait — `BarSink` keeps indicatif for the
+  CLI, `StderrSink` prints one plain line per 10% in MCP mode, where a drawn bar
+  in a piped stderr is escape-code noise.
+- `Transcriber` gained `is_loaded()`, defaulted to `false` so existing
+  implementors need no change. `mcp::serve()` keeps its signature; `main()` uses
+  the new `serve_with_info()`.
+- Tests: 137 → 158, including the first coverage of `src/audio.rs` and
+  `src/model.rs`. All still offline.
+
 ## v0.6.0 — 2026-08-24
 
 - **Commits now follow Conventional Commits** (`<type>(<scope>): <subject>`,
