@@ -1,5 +1,54 @@
 # Changelog
 
+## v0.8.0 — 2026-08-25
+
+The follow-ups from reviewing v0.7.0's warm-up thread, plus the schema contract
+the MCP tools never declared. Minor rather than patch because
+`harken::mcp::ServerInfo` gained a public field, which breaks literal
+construction — the rule for picking that digit is now written down in
+`CLAUDE.md` instead of re-derived per release.
+
+- **`transcribe_status` no longer misreports a warm-up in flight.** It derived
+  everything from a pure stat, so during the startup download it said the model
+  "is NOT cached: the first transcription call will download it" — both halves
+  wrong in the one window an agent is most likely to ask. The download is
+  already running, and a call does not start a second one, it waits on it. The
+  tool stays stat-only (that is what lets it answer "will a call stall?" without
+  ever risking a download); it now reads the warm-up state alongside the stat
+  and reports `idle`, `downloading`, `ready` or `failed`.
+- **A failed warm-up is finally visible to a client.** It used to exist only as
+  a stderr line, so an agent asking for status right after got a plain "not
+  cached" with no hint the download had already failed once. `transcribe_status`
+  now surfaces the recorded error.
+- **All three MCP tools declare an `outputSchema`** describing the
+  `structuredContent` they already returned, plus `readOnlyHint: true` and
+  `openWorldHint: false`. A client now has a machine-readable contract for the
+  structured payload and can tell these tools mutate nothing without reading
+  prose. A key-set drift guard ships with them — a declared schema with nothing
+  checking it is worse than no schema.
+- **Fixed:** a panic in the warm-up thread wedged every tool call for the life
+  of the process. The warm state was settled only on the happy path, so an
+  unwind left it pending forever and the gate blocked on it — the client saw
+  `initialize` and `tools/list` answer normally, then a `tools/call` that never
+  returned and never errored. A drop guard now settles the state on unwind too,
+  so a panic behaves like a failed download: the call is let through and the
+  engine retries inline.
+- **Fixed:** the server outlived EOF until its warm-up download finished. A
+  client that spawns and kills MCP servers (probing a config, restarting after
+  an edit) left one live process per attempt, each streaming up to 466 MB with
+  nothing to stop it. The thread is now detached at EOF, bounding shutdown. An
+  abandoned download can never corrupt the cache — only a Content-Length- and
+  SHA-256-verified file is renamed into place — but it does leave its `.partial`
+  file behind, which is inert.
+- 158 → 166 tests.
+
+### Breaking
+
+- `harken::mcp::ServerInfo` has a new public field, `warm: Option<Warmth>`.
+  Construct it with `..ServerInfo::default()`, or pass `Some(warmth)` to have
+  `transcribe_status` report the warm-up. CLI and MCP surfaces are unaffected —
+  no flag, tool or argument changed shape.
+
 ## v0.7.0 — 2026-08-25
 
 The first-run and cold-start paths, which had the least test coverage and the
