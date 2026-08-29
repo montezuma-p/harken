@@ -80,7 +80,7 @@ jobs:
       # Prebuilt binaries instead of `cargo install`, which would spend ~5min
       # compiling cargo-audit every run. The action verifies SHA256 and any
       # attestation the tool publishes.
-      - uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2.86.5
+      - uses: taiki-e/install-action@fcf5432d9f50d67e37ee6e29bdb7a224ff67b4a7 # v2.86.8
         with:
           tool: cargo-audit@0.22.2,cargo-machete@0.9.2
       - run: cargo audit
